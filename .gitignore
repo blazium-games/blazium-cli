@@ -1,0 +1,5 @@
+*.exe
+*.zip
+*.tpz
+data/*
+!data/.keep
