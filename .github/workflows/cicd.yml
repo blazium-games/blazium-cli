@@ -152,3 +152,17 @@ jobs:
           source: ${{ startsWith(matrix.goos, 'windows') && './signed' || './build' }}/${{ matrix.output }}.sig
           out_dir: cli/${{ matrix.goos }}/${{ steps.version.outputs.simple_version }}
 
+      - name: Updating Cerebro
+        run: |
+          curl -s -X POST "${{ secrets.CEREBRO_URL }}/api/v1/tools/cli" \
+          -H "Content-Type: application/json" \
+          -H "BLAZIUM_AUTH: ${{ secrets.BLAZIUM_AUTH }}" \
+          -d '{
+                "name": "Blazium CLI",
+                "type": "cli",
+                "version": "${{ steps.version.outputs.simple_version }}",
+                "os": "${{ matrix.goos }}",
+                "file": "https://cdn.blazium.app/cli/${{ matrix.goos }}/${{ steps.version.outputs.simple_version }}/${{ matrix.output }}",
+                "sig": "${{ matrix.goos != 'windows' && "https://cdn.blazium.app/cli/${{ matrix.goos }}/${{ steps.version.outputs.simple_version }}/${{ matrix.output }}.sig" || "" }}"
+              }'
+
