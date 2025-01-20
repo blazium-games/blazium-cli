@@ -148,6 +148,8 @@ func logMessage(format string, args ...interface{}) {
 	}
 }
 
+func getLatest()
+
 func main() {
 	var version string
 	var download, template, editor, mono bool
