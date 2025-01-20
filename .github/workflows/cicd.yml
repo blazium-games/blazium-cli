@@ -103,6 +103,12 @@ jobs:
           output_path: ./signed/${{ matrix.output }}
           environment_name: PROD
 
+      - name: GPG Signing build (Windows Signed)
+        if: ${{ matrix.goos == 'windows' }}
+        run: |
+          gpg --batch --yes \
+            --output signed/${{ matrix.output }}.sig --detach-sign signed/${{ matrix.output }}
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
