@@ -1,0 +1,147 @@
+name: Build and Sign Commandline
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            output: blazium-cli
+          - goos: windows
+            goarch: amd64
+            output: blazium-cli.exe
+          - goos: darwin
+            goarch: amd64
+            output: blazium-cli
+
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get Version with Bioblaze/game-semver-action
+        uses: Bioblaze/game-semver-action@v10
+        id: version
+        with:
+          personal_github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Write version to file
+        run: |
+          mkdir -p data
+          echo "${{ steps.version.outputs.simple_version }}" > data/cliBuild.txt
+
+      - name: Get highest nightly version
+        run: |
+          mkdir -p data
+          response=$(curl -s https://blazium.app/api/versions/data/nightly)
+          highest_version=$(echo "$response" | jq -r 'max_by(.version | split(".") | map(tonumber)) | .version')
+          echo "$highest_version" > data/defaultEngineBuild.txt
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: 1.23.2
+
+      - name: Install dependencies for cross-compilation
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang llvm
+
+      - name: Install GPG
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gnupg
+
+      - name: Import GPG key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+
+      - name: Run application tests
+        run: go test ./...
+
+      - name: Build application
+        run: |
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CC=o64-clang go build -o build/${{ matrix.output }} ./...
+
+      - name: GPG Signing build
+        run: |
+          gpg --batch --yes \
+            --output build/${{ matrix.output }}.sig --detach-sign build/${{ matrix.output }}
+
+
+      - uses: bioblaze/sslcom-code-signer@v5
+        name: Windows Signing
+        if: ${{ matrix.goos == 'windows' }}
+        with:
+          command: sign
+          username: ${{ secrets.ES_USERNAME }}
+          password: ${{ secrets.ES_PASSWORD }}
+          credential_id: ${{ secrets.CREDENTIAL_ID }}
+          totp_secret: ${{ secrets.ES_TOTP_SECRET }}
+          file_path: ./build/${{ matrix.output }}
+          output_path: ./build/${{ matrix.output }}
+          environment_name: PROD
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: signed-${{ matrix.goos }}
+          path: build/
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: ./build/${{ matrix.output }}
+          out_dir: cli/${{ matrix.goos }}
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: ./build/${{ matrix.output }}.sig
+          out_dir: cli/${{ matrix.goos }}/${{ steps.version.outputs.simple_version }}
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: ./build/${{ matrix.output }}.sig
+          out_dir: cli/${{ matrix.goos }}
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: ./build/${{ matrix.output }}.sig
+          out_dir: cli/${{ matrix.goos }}/${{ steps.version.outputs.simple_version }}
+
