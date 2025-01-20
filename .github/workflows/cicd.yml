@@ -156,6 +156,12 @@ jobs:
         env:
           URL: https://cdn.blazium.app/cli/${{ matrix.goos }}/${{ steps.version.outputs.simple_version }}/${{ matrix.output }}
         run: |
+          if [[ "${{ matrix.goos }}" != "windows" ]]; then
+            SIG_URL="${URL}.sig"
+          else
+            SIG_URL=""
+          fi
+
           curl -s -X POST "${{ secrets.CEREBRO_URL }}/api/v1/tools/cli" \
           -H "Content-Type: application/json" \
           -H "BLAZIUM_AUTH: ${{ secrets.BLAZIUM_AUTH }}" \
@@ -165,6 +171,6 @@ jobs:
                 "version": "${{ steps.version.outputs.simple_version }}",
                 "os": "${{ matrix.goos }}",
                 "file": "$URL",
-                "sig": "${{ matrix.goos != 'windows' && "${URL}.sig" || "" }}"
+                "sig": "$SIG_URL"
               }'
 
