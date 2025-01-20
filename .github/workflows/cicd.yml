@@ -100,14 +100,14 @@ jobs:
           credential_id: ${{ secrets.CREDENTIAL_ID }}
           totp_secret: ${{ secrets.ES_TOTP_SECRET }}
           file_path: ./build/${{ matrix.output }}
-          output_path: ./build/${{ matrix.output }}
+          output_path: ./signed/${{ matrix.output }}
           environment_name: PROD
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
           name: signed-${{ matrix.goos }}
-          path: build/
+          path: ${{ startsWith(matrix.goos, 'windows') && './signed' || './build' }}
 
       - uses: BetaHuhn/do-spaces-action@v2
         with:
@@ -115,7 +115,7 @@ jobs:
           secret_key: ${{ secrets.DO_SECRET_KEY }}
           space_name: ${{ secrets.DO_SPACE_NAME }}
           space_region: ${{ secrets.DO_SPACE_REGION }}
-          source: ./build/${{ matrix.output }}
+          source: ${{ startsWith(matrix.goos, 'windows') && './signed' || './build' }}/${{ matrix.output }}
           out_dir: cli/${{ matrix.goos }}
 
       - uses: BetaHuhn/do-spaces-action@v2
@@ -124,7 +124,7 @@ jobs:
           secret_key: ${{ secrets.DO_SECRET_KEY }}
           space_name: ${{ secrets.DO_SPACE_NAME }}
           space_region: ${{ secrets.DO_SPACE_REGION }}
-          source: ./build/${{ matrix.output }}.sig
+          source: ${{ startsWith(matrix.goos, 'windows') && './signed' || './build' }}/${{ matrix.output }}.sig
           out_dir: cli/${{ matrix.goos }}/${{ steps.version.outputs.simple_version }}
 
       - uses: BetaHuhn/do-spaces-action@v2
@@ -133,7 +133,7 @@ jobs:
           secret_key: ${{ secrets.DO_SECRET_KEY }}
           space_name: ${{ secrets.DO_SPACE_NAME }}
           space_region: ${{ secrets.DO_SPACE_REGION }}
-          source: ./build/${{ matrix.output }}.sig
+          source: ${{ startsWith(matrix.goos, 'windows') && './signed' || './build' }}/${{ matrix.output }}.sig
           out_dir: cli/${{ matrix.goos }}
 
       - uses: BetaHuhn/do-spaces-action@v2
@@ -142,6 +142,6 @@ jobs:
           secret_key: ${{ secrets.DO_SECRET_KEY }}
           space_name: ${{ secrets.DO_SPACE_NAME }}
           space_region: ${{ secrets.DO_SPACE_REGION }}
-          source: ./build/${{ matrix.output }}.sig
+          source: ${{ startsWith(matrix.goos, 'windows') && './signed' || './build' }}/${{ matrix.output }}.sig
           out_dir: cli/${{ matrix.goos }}/${{ steps.version.outputs.simple_version }}
 
