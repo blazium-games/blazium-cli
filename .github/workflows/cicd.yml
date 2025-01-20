@@ -153,6 +153,8 @@ jobs:
           out_dir: cli/${{ matrix.goos }}/${{ steps.version.outputs.simple_version }}
 
       - name: Updating Cerebro
+        env:
+          URL: https://cdn.blazium.app/cli/${{ matrix.goos }}/${{ steps.version.outputs.simple_version }}/${{ matrix.output }}
         run: |
           curl -s -X POST "${{ secrets.CEREBRO_URL }}/api/v1/tools/cli" \
           -H "Content-Type: application/json" \
@@ -162,7 +164,7 @@ jobs:
                 "type": "cli",
                 "version": "${{ steps.version.outputs.simple_version }}",
                 "os": "${{ matrix.goos }}",
-                "file": "https://cdn.blazium.app/cli/${{ matrix.goos }}/${{ steps.version.outputs.simple_version }}/${{ matrix.output }}",
-                "sig": "${{ matrix.goos != 'windows' && "https://cdn.blazium.app/cli/${{ matrix.goos }}/${{ steps.version.outputs.simple_version }}/${{ matrix.output }}.sig" || "" }}"
+                "file": "$URL",
+                "sig": "${{ matrix.goos != 'windows' && "${URL}.sig" || "" }}"
               }'
 
