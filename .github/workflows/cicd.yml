@@ -48,12 +48,10 @@ jobs:
 
       - name: Write version to file
         run: |
-          mkdir -p data
           echo "${{ steps.version.outputs.simple_version }}" > data/cliBuild.txt
 
       - name: Get highest nightly version
         run: |
-          mkdir -p data
           response=$(curl -s https://blazium.app/api/versions/data/nightly)
           highest_version=$(echo "$response" | jq -r 'max_by(.version | split(".") | map(tonumber)) | .version')
           echo "$highest_version" > data/defaultEngineBuild.txt
@@ -84,7 +82,7 @@ jobs:
 
       - name: Build application
         run: |
-          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CC=${{ matrix.compiler }} go build -o build/${{ matrix.output }} ./...
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CC=${{ matrix.compiler }} go build -o ./build/${{ matrix.output }} ./...
 
       - name: GPG Signing build
         run: |
