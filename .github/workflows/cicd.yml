@@ -89,6 +89,11 @@ jobs:
           gpg --batch --yes \
             --output build/${{ matrix.output }}.sig --detach-sign build/${{ matrix.output }}
 
+      - name: GPG Signing build
+        if: ${{ matrix.goos == 'windows' }}
+        run: |
+          mkdir signed
+
 
       - uses: bioblaze/sslcom-code-signer@v5
         name: Windows Signing
@@ -107,7 +112,7 @@ jobs:
         if: ${{ matrix.goos == 'windows' }}
         run: |
           gpg --batch --yes \
-            --output signed/${{ matrix.output }}.sig --detach-sign signed/${{ matrix.output }}
+            --output ./signed/${{ matrix.output }}.sig --detach-sign ./signed/${{ matrix.output }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
