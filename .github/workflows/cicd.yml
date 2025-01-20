@@ -53,7 +53,7 @@ jobs:
       - name: Get highest nightly version
         run: |
           response=$(curl -s https://blazium.app/api/versions/data/nightly)
-          highest_version=$(echo "$response" | jq -r 'max_by(.version | split(".") | map(tonumber)) | .version')
+          highest_version=$(echo "$response" | jq -r 'max_by(.version | split(".") | map(tonumber)) | .version' | tr -d '\n\r')
           echo "$highest_version" > data/defaultEngineBuild.txt
 
       - name: Set up Go
