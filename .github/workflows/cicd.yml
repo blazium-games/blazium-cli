@@ -162,7 +162,7 @@ jobs:
             SIG_URL=""
           fi
 
-          curl -s -X POST "${{ secrets.CEREBRO_URL }}/api/v1/tools/cli" \
+          curl -s -X POST "${{ secrets.CEREBRO_URL }}/api/v1/tools" \
           -H "Content-Type: application/json" \
           -H "BLAZIUM_AUTH: ${{ secrets.BLAZIUM_AUTH }}" \
           -d '{
