@@ -165,12 +165,15 @@ jobs:
           curl -s -X POST "${{ secrets.CEREBRO_URL }}/api/v1/tools" \
           -H "Content-Type: application/json" \
           -H "BLAZIUM_AUTH: ${{ secrets.BLAZIUM_AUTH }}" \
-          -d '{
-                "name": "Blazium CLI",
-                "type": "cli",
-                "version": "${{ steps.version.outputs.simple_version }}",
-                "os": "${{ matrix.goos }}",
-                "file": "$URL",
-                "sig": "$SIG_URL"
-              }'
+          -d "$(cat <<EOF
+          {
+            "name": "Blazium CLI",
+            "type": "cli",
+            "version": "${{ steps.version.outputs.simple_version }}",
+            "os": "${{ matrix.goos }}",
+            "file": "$URL",
+            "sig": "$SIG_URL"
+          }
+          EOF
+          )"
 
