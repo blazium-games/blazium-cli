@@ -34,7 +34,7 @@ type EditorMetadata struct {
 
 var (
 	editorMetadata []EditorMetadata
-	silentMode bool = false
+	silentMode     bool = false
 )
 
 func init() {}
@@ -118,7 +118,6 @@ func findEditorMetadata(version, platform, arch string, isMono bool) (*EditorMet
 	return nil, errors.New("no matching editor metadata found")
 }
 
-
 func validateDestinationPath(dest string) error {
 	// Check if the destination is "." (current directory)
 	if dest == "." {
@@ -155,22 +154,22 @@ func main() {
 	var platform, arch string
 
 	rootCmd := &cobra.Command{
-		Use:   "blazium-cli [flags] .",
-		Short: "Blazium CLI tool",
+		Use:     "blazium-cli [flags] .",
+		Short:   "Blazium CLI tool",
 		Version: CLIBUILD,
-		Long:  "Command-line interface for managing Blazium resources, including templates and editors.",
+		Long:    "Command-line interface for managing Blazium resources, including templates and editors.",
 		PreRun: func(cmd *cobra.Command, args []string) {
-		  if len(args) > 0 {
-			  dest := args[len(args)-1]
-			  if err := validateDestinationPath(dest); err != nil {
-				  logMessage("Error with destination path: %v", err)
-				  os.Exit(1)
-			  }
-		  } else {
-			logMessage("Missing Destination path.")
-			logMessage(cmd.UsageString())
-			os.Exit(1)
-		  }
+			if len(args) > 0 {
+				dest := args[len(args)-1]
+				if err := validateDestinationPath(dest); err != nil {
+					logMessage("Error with destination path: %v", err)
+					os.Exit(1)
+				}
+			} else {
+				logMessage("Missing Destination path.")
+				logMessage(cmd.UsageString())
+				os.Exit(1)
+			}
 		},
 		Run: func(cmd *cobra.Command, args []string) {
 			if !download {
@@ -239,7 +238,7 @@ func main() {
 		},
 	}
 
-	rootCmd.Flags().StringVar(&version, "get-version", "", "Specify the version to use (default to (" + DEFAULTBUILD+ ") if not set).")
+	rootCmd.Flags().StringVar(&version, "get-version", "", "Specify the version to use (default to ("+DEFAULTBUILD+") if not set).")
 	rootCmd.Flags().BoolVar(&download, "download", false, "Download templates or editors.")
 	rootCmd.Flags().BoolVar(&template, "template", false, "Download the export template.")
 	rootCmd.Flags().BoolVar(&editor, "editor", false, "Download the editor.")
