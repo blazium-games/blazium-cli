@@ -109,7 +109,7 @@ jobs:
           environment_name: PROD
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: signed-${{ matrix.goos }}
           path: ${{ startsWith(matrix.goos, 'windows') && './signed' || './build' }}
