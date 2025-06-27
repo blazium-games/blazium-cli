@@ -3,3 +3,5 @@
 *.tpz
 data/*
 !data/.keep
+.DS_Store
+games.ini
