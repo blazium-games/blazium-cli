@@ -82,7 +82,7 @@ jobs:
 
       - name: Build application
         run: |
-          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CC=${{ matrix.compiler }} go build -o ./build/${{ matrix.output }} ./...
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CC=${{ matrix.compiler }} go build -o ./build/${{ matrix.output }} .
 
       - name: Compute sha256
         id: digest
