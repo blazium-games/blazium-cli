@@ -251,34 +251,109 @@ func downloadTemplateEntries(dest string, entries []TemplateMetadata, templatesD
 	return paths, nil
 }
 
-// selectRequiredRuntimeTemplates picks one web, linux, and windows template when possible.
-func selectRequiredRuntimeTemplates(all []TemplateMetadata) []TemplateMetadata {
-	need := map[string]bool{"web": true, "linux": true, "windows": true}
+// selectRequiredRuntimeTemplates picks web, linux, and windows templates for the active variant.
+// Windows requires both normal and console executables.
+func selectRequiredRuntimeTemplates(all []TemplateMetadata, variant TemplateVariant) []TemplateMetadata {
 	var out []TemplateMetadata
-	for _, m := range all {
-		p := strings.ToLower(m.Platform)
-		if !need[p] {
-			continue
-		}
-		name := strings.ToLower(m.Filename)
-		if strings.Contains(name, "debug") {
-			continue
-		}
-		out = append(out, m)
-		need[p] = false
+
+	if m := pickTemplateByFilename(all, webTemplateName(variant)); m != nil {
+		out = append(out, *m)
+	} else if m := pickPlatformFallback(all, "web", variant); m != nil {
+		logMessage("Warning: %s web template not found; using %s", webTemplateName(variant), m.Filename)
+		out = append(out, *m)
 	}
-	for p, missing := range need {
-		if !missing {
-			continue
-		}
-		for _, m := range all {
-			if strings.ToLower(m.Platform) == p {
-				out = append(out, m)
-				break
-			}
-		}
+
+	if m := pickTemplateByFilename(all, linuxTemplateName(variant)); m != nil {
+		out = append(out, *m)
+	} else if m := pickPlatformFallback(all, "linux", variant); m != nil {
+		logMessage("Warning: %s linux template not found; using %s", linuxTemplateName(variant), m.Filename)
+		out = append(out, *m)
 	}
+
+	normal := windowsNormalTemplateName(variant)
+	console := windowsConsoleTemplateName(variant)
+	if m := pickTemplateByFilename(all, normal); m != nil {
+		out = append(out, *m)
+	} else if m := pickWindowsNormalFallback(all, variant); m != nil {
+		logMessage("Warning: %s not found; using %s", normal, m.Filename)
+		out = append(out, *m)
+	}
+	if m := pickTemplateByFilename(all, console); m != nil {
+		out = append(out, *m)
+	} else if m := pickWindowsConsoleFallback(all, variant); m != nil {
+		logMessage("Warning: %s not found; using %s", console, m.Filename)
+		out = append(out, *m)
+	}
+
 	return out
+}
+
+func pickTemplateByFilename(all []TemplateMetadata, filename string) *TemplateMetadata {
+	want := strings.ToLower(filename)
+	for i := range all {
+		if strings.ToLower(all[i].Filename) == want {
+			return &all[i]
+		}
+	}
+	return nil
+}
+
+func pickPlatformFallback(all []TemplateMetadata, platform string, variant TemplateVariant) *TemplateMetadata {
+	for i := range all {
+		p := strings.ToLower(all[i].Platform)
+		if p != platform {
+			continue
+		}
+		if matchesTemplateVariant(all[i].Filename, variant) {
+			return &all[i]
+		}
+	}
+	for i := range all {
+		if strings.ToLower(all[i].Platform) == platform {
+			return &all[i]
+		}
+	}
+	return nil
+}
+
+func pickWindowsNormalFallback(all []TemplateMetadata, variant TemplateVariant) *TemplateMetadata {
+	for i := range all {
+		if strings.ToLower(all[i].Platform) != "windows" {
+			continue
+		}
+		if !isWindowsNormalTemplate(all[i].Filename) {
+			continue
+		}
+		if matchesTemplateVariant(all[i].Filename, variant) {
+			return &all[i]
+		}
+	}
+	for i := range all {
+		if strings.ToLower(all[i].Platform) == "windows" && isWindowsNormalTemplate(all[i].Filename) {
+			return &all[i]
+		}
+	}
+	return nil
+}
+
+func pickWindowsConsoleFallback(all []TemplateMetadata, variant TemplateVariant) *TemplateMetadata {
+	for i := range all {
+		if strings.ToLower(all[i].Platform) != "windows" {
+			continue
+		}
+		if !isWindowsConsoleTemplate(all[i].Filename) {
+			continue
+		}
+		if matchesTemplateVariant(all[i].Filename, variant) {
+			return &all[i]
+		}
+	}
+	for i := range all {
+		if strings.ToLower(all[i].Platform) == "windows" && isWindowsConsoleTemplate(all[i].Filename) {
+			return &all[i]
+		}
+	}
+	return nil
 }
 
 func tryDownloadTPZ(url, dest string) error {

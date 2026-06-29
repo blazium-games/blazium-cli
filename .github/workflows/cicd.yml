@@ -84,6 +84,14 @@ jobs:
         run: |
           GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CC=${{ matrix.compiler }} go build -o ./build/${{ matrix.output }} ./...
 
+      - name: Compute sha256
+        id: digest
+        run: |
+          SHA256=$(sha256sum build/${{ matrix.output }} | awk '{print $1}')
+          SIZE=$(stat -c%s build/${{ matrix.output }})
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
+
       - name: GPG Signing build
         if: ${{ matrix.goos != 'windows' }}
         run: |
@@ -158,8 +166,10 @@ jobs:
         run: |
           if [[ "${{ matrix.goos }}" != "windows" ]]; then
             SIG_URL="${URL}.sig"
+            SIGNING="gpg"
           else
             SIG_URL=""
+            SIGNING="sslcom"
           fi
 
           curl -s -X POST "${{ secrets.CEREBRO_URL }}/api/v1/tools" \
@@ -171,9 +181,80 @@ jobs:
             "type": "cli",
             "version": "${{ steps.version.outputs.simple_version }}",
             "os": "${{ matrix.goos }}",
+            "arch": "x86_64",
             "file": "$URL",
-            "sig": "$SIG_URL"
+            "sig": "$SIG_URL",
+            "sha256": "${{ steps.digest.outputs.sha256 }}",
+            "size": ${{ steps.digest.outputs.size }},
+            "signing": "$SIGNING",
+            "released_on": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
           }
           EOF
           )"
+
+  manifest:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get Version with Bioblaze/game-semver-action
+        uses: Bioblaze/game-semver-action@v10
+        id: version
+        with:
+          personal_github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-go@v4
+        with:
+          go-version: 1.23.2
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: signed-*
+          merge-multiple: true
+          path: artifacts/raw
+
+      - name: Stage artifacts
+        run: |
+          mkdir -p artifacts/linux artifacts/windows artifacts/darwin
+          cp artifacts/raw/blazium-cli artifacts/linux/blazium-cli 2>/dev/null || true
+          cp artifacts/raw/blazium-cli.sig artifacts/linux/blazium-cli.sig 2>/dev/null || true
+          cp artifacts/raw/blazium-cli.exe artifacts/windows/blazium-cli.exe 2>/dev/null || true
+          find artifacts/raw -type f -name blazium-cli -exec cp {} artifacts/darwin/blazium-cli \; 2>/dev/null || true
+
+      - name: Download existing manifest
+        continue-on-error: true
+        run: curl -fsSL https://cdn.blazium.app/cli/cli.json -o existing-cli.json
+
+      - name: Generate cli.json
+        env:
+          CEREBRO_MANIFEST: ${{ secrets.CEREBRO_URL }}/api/v1/tools/cli/manifest
+        run: |
+          ARGS=(--version "${{ steps.version.outputs.simple_version }}" --artifacts artifacts --out cli.json)
+          if [ -f existing-cli.json ]; then
+            ARGS+=(--base-manifest existing-cli.json)
+          fi
+          if [ -n "$CEREBRO_MANIFEST" ]; then
+            ARGS+=(--cerebro-manifest "$CEREBRO_MANIFEST")
+          fi
+          go run ./cmd/generate-cli-manifest "${ARGS[@]}"
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: cli.json
+          out_dir: cli
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: cli.json
+          out_dir: cli/${{ steps.version.outputs.simple_version }}
 

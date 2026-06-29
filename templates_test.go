@@ -93,15 +93,32 @@ func TestSelectRequiredRuntimeTemplates(t *testing.T) {
 	all := []TemplateMetadata{
 		{Filename: "web_nothreads_debug.zip", Platform: "web"},
 		{Filename: "web_nothreads_release.zip", Platform: "web"},
-		{Filename: "linux_release.x86_64.zip", Platform: "linux"},
-		{Filename: "windows_release.x86_64.zip", Platform: "windows"},
+		{Filename: "linux_debug.x86_64", Platform: "linux"},
+		{Filename: "linux_release.x86_64", Platform: "linux"},
+		{Filename: "windows_debug_x86_64.exe", Platform: "windows"},
+		{Filename: "windows_debug_x86_64_console.exe", Platform: "windows"},
+		{Filename: "windows_release_x86_64.exe", Platform: "windows"},
+		{Filename: "windows_release_x86_64_console.exe", Platform: "windows"},
 	}
-	got := selectRequiredRuntimeTemplates(all)
-	if len(got) != 3 {
-		t.Fatalf("len=%d", len(got))
+	got := selectRequiredRuntimeTemplates(all, TemplateVariantDebug)
+	if len(got) != 4 {
+		t.Fatalf("debug len=%d got %+v", len(got), got)
 	}
-	if got[0].Filename != "web_nothreads_release.zip" {
-		t.Fatalf("web pick: %+v", got[0])
+	want := map[string]bool{
+		"web_nothreads_debug.zip":              true,
+		"linux_debug.x86_64":                   true,
+		"windows_debug_x86_64.exe":             true,
+		"windows_debug_x86_64_console.exe":     true,
+	}
+	for _, m := range got {
+		if !want[m.Filename] {
+			t.Fatalf("unexpected pick: %s", m.Filename)
+		}
+	}
+
+	gotRelease := selectRequiredRuntimeTemplates(all, TemplateVariantRelease)
+	if len(gotRelease) != 4 {
+		t.Fatalf("release len=%d", len(gotRelease))
 	}
 }
 

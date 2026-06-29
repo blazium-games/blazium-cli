@@ -211,7 +211,7 @@ func downloadAndInstallTPZ(baseVersion string, isNightly, mono bool, dest, templ
 	return installedVersion, nil
 }
 
-func setupRuntimeTemplates(baseVersion string, isNightly bool, dest, templatesDest string) error {
+func setupRuntimeTemplates(baseVersion string, isNightly bool, dest, templatesDest string, variant TemplateVariant) error {
 	if templatesDest == "" {
 		templatesDest = defaultTemplatesDest()
 	}
@@ -223,7 +223,7 @@ func setupRuntimeTemplates(baseVersion string, isNightly bool, dest, templatesDe
 		if loadErr != nil {
 			return fmt.Errorf("template bundle and registry both unavailable: bundle=%v registry=%w", err, loadErr)
 		}
-		required := selectRequiredRuntimeTemplates(all)
+		required := selectRequiredRuntimeTemplates(all, variant)
 		if len(required) == 0 {
 			return fmt.Errorf("no individual template files available for version %s", baseVersion)
 		}
@@ -257,6 +257,7 @@ func main() {
 	var download, template, editor, mono, latestNightly, installTemplates, setupRuntime bool
 	var listTemplates, templateOnlyMissing, installTemplateFiles bool
 	var templateFiles []string
+	var templateVariant string
 
 	rootCmd := &cobra.Command{
 		Use:     "blazium-cli [flags] <destination-path>",
@@ -334,6 +335,11 @@ func main() {
 				os.Exit(1)
 			}
 			logMessage("Using Blazium version %s (nightly=%v)", baseVersion, isNightly)
+			variant := TemplateVariantFromEnv()
+			if strings.TrimSpace(templateVariant) != "" {
+				variant = TemplateVariantFromString(templateVariant)
+			}
+			logMessage("Using template variant %s", variant)
 
 			dest := "."
 			if len(args) > 0 {
@@ -397,7 +403,7 @@ func main() {
 
 			if installTemplates {
 				if setupRuntime {
-					if err := setupRuntimeTemplates(baseVersion, isNightly, dest, templatesDest); err != nil {
+					if err := setupRuntimeTemplates(baseVersion, isNightly, dest, templatesDest, variant); err != nil {
 						logMessage("Error installing runtime templates: %v", err)
 						os.Exit(1)
 					}
@@ -447,6 +453,7 @@ func main() {
 	rootCmd.Flags().StringVar(&templatePlatform, "template-platform", "", "Filter template downloads by platform (web, linux, windows, android, ios, macos).")
 	rootCmd.Flags().BoolVar(&templateOnlyMissing, "template-only-missing", false, "Skip template files already present under --templates-dest.")
 	rootCmd.Flags().BoolVar(&installTemplateFiles, "install-template-files", false, "Install downloaded template zips into export_templates (no .tpz required).")
+	rootCmd.Flags().StringVar(&templateVariant, "template-variant", "", "Export template variant: debug or release (default debug, or BLAZIUM_TEMPLATE_VARIANT).")
 
 	if err := rootCmd.Execute(); err != nil {
 		logMessage("%v", err)
