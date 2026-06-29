@@ -49,6 +49,35 @@ func TestLoadTemplateMetadataCerebroFallback(t *testing.T) {
 	}
 }
 
+func TestLoadTemplateMetadataLegacyBundle(t *testing.T) {
+	old := httpGet
+	defer func() { httpGet = old }()
+	httpGet = func(url string) ([]byte, error) {
+		return []byte(`{
+			"base": {
+				"filename": "Blazium_v0.6.707_export_templates.tpz",
+				"url": "https://cdn.example/base.tpz",
+				"checksum": {"256": "abc123"}
+			},
+			"mono": {
+				"filename": "Blazium_v0.6.707_mono_export_templates.tpz",
+				"url": "https://cdn.example/mono.tpz",
+				"checksum": {"256": "def456"}
+			}
+		}`), nil
+	}
+	got, err := loadTemplateMetadata("0.6.707", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len=%d got %+v", len(got), got)
+	}
+	if !got[1].Mono || got[1].Sha256 != "def456" {
+		t.Fatalf("mono bundle: %+v", got[1])
+	}
+}
+
 func TestFilterTemplateMetadataByPlatform(t *testing.T) {
 	all := []TemplateMetadata{
 		{Filename: "web_nothreads_release.zip", Platform: "web"},

@@ -48,9 +48,9 @@ func loadTemplateMetadata(version string, isNightly bool) ([]TemplateMetadata, e
 	url := templatesJSONURL(version, isNightly)
 	body, err := fetchRemoteJSON(url)
 	if err == nil {
-		var entries []TemplateMetadata
-		if err := json.Unmarshal(body, &entries); err != nil {
-			return nil, fmt.Errorf("parse templates.json: %w", err)
+		entries, parseErr := parseTemplateMetadataJSON(body)
+		if parseErr != nil {
+			return nil, fmt.Errorf("parse templates.json: %w", parseErr)
 		}
 		return entries, nil
 	}
@@ -58,6 +58,58 @@ func loadTemplateMetadata(version string, isNightly bool) ([]TemplateMetadata, e
 		return nil, fmt.Errorf("fetch templates.json from %s: %w", url, err)
 	}
 	return loadTemplateMetadataFromCerebro(deployTypeName(isNightly), version)
+}
+
+func parseTemplateMetadataJSON(body []byte) ([]TemplateMetadata, error) {
+	var entries []TemplateMetadata
+	if err := json.Unmarshal(body, &entries); err == nil {
+		return entries, nil
+	}
+
+	var wrapped struct {
+		Files []TemplateMetadata `json:"files"`
+	}
+	if err := json.Unmarshal(body, &wrapped); err == nil && len(wrapped.Files) > 0 {
+		return wrapped.Files, nil
+	}
+
+	var legacy struct {
+		Base *legacyTemplateBundle `json:"base"`
+		Mono *legacyTemplateBundle `json:"mono"`
+	}
+	if err := json.Unmarshal(body, &legacy); err != nil {
+		return nil, err
+	}
+	return legacyBundlesToMetadata(legacy.Base, legacy.Mono), nil
+}
+
+type legacyTemplateBundle struct {
+	Filename string `json:"filename"`
+	Filesize string `json:"filesize"`
+	URL      string `json:"url"`
+	Checksum struct {
+		Sha256 string `json:"256"`
+	} `json:"checksum"`
+}
+
+func legacyBundlesToMetadata(base, mono *legacyTemplateBundle) []TemplateMetadata {
+	var out []TemplateMetadata
+	if base != nil && base.Filename != "" {
+		out = append(out, legacyBundleToMetadata(*base, false))
+	}
+	if mono != nil && mono.Filename != "" {
+		out = append(out, legacyBundleToMetadata(*mono, true))
+	}
+	return out
+}
+
+func legacyBundleToMetadata(b legacyTemplateBundle, mono bool) TemplateMetadata {
+	return TemplateMetadata{
+		Filename:    b.Filename,
+		DownloadURL: b.URL,
+		Sha256:      b.Checksum.Sha256,
+		Mono:        mono,
+	}
 }
 
 func loadTemplateMetadataFromCerebro(deployType, version string) ([]TemplateMetadata, error) {
