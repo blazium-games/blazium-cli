@@ -83,18 +83,6 @@ func buildURL(version string, isMono, isNightly bool) string {
 	return fmt.Sprintf("https://cdn.blazium.app/%s/%s/Blazium_v%s%s", releaseType, version, version, suffix)
 }
 
-func findEditorMetadata(version, platform, arch string, isMono bool) (*EditorMetadata, error) {
-	for _, metadata := range editorMetadata {
-		if strings.Contains(metadata.Filename, version) &&
-			strings.Contains(metadata.Filename, platform) &&
-			strings.Contains(metadata.Filename, arch) &&
-			(isMono == strings.Contains(metadata.Filename, ".mono")) {
-			return &metadata, nil
-		}
-	}
-	return nil, errors.New("no matching editor metadata found")
-}
-
 func validateDestinationPath(dest string) error {
 	if dest == "." {
 		return nil
