@@ -120,7 +120,17 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: signed-${{ matrix.goos }}
-          path: ${{ startsWith(matrix.goos, 'windows') && './signed' || './build' }}
+          path: |
+            build/blazium-cli
+            build/blazium-cli.sig
+        if: ${{ matrix.goos != 'windows' }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        if: ${{ matrix.goos == 'windows' }}
+        with:
+          name: signed-windows
+          path: signed/blazium-cli.exe
 
       - uses: BetaHuhn/do-spaces-action@v2
         with:
@@ -237,6 +247,11 @@ jobs:
             if [ -d "${dir}/signed" ]; then
               mv "${dir}/signed/"* "${dir}/" 2>/dev/null || true
               rmdir "${dir}/signed" 2>/dev/null || true
+            fi
+            if [ -d "${dir}/blazium-cli.exe" ] && [ -f "${dir}/blazium-cli.exe/blazium-cli.exe" ]; then
+              mv "${dir}/blazium-cli.exe/blazium-cli.exe" "${dir}/blazium-cli.exe.tmp"
+              rm -rf "${dir}/blazium-cli.exe"
+              mv "${dir}/blazium-cli.exe.tmp" "${dir}/blazium-cli.exe"
             fi
           }
           normalize_platform linux
