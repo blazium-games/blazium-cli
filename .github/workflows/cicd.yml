@@ -224,6 +224,26 @@ jobs:
           name: signed-windows
           path: artifacts/windows
 
+      - name: Normalize artifact layout
+        run: |
+          set -euo pipefail
+          normalize_platform() {
+            local platform="$1"
+            local dir="artifacts/${platform}"
+            if [ -d "${dir}/build" ]; then
+              mv "${dir}/build/"* "${dir}/" 2>/dev/null || true
+              rmdir "${dir}/build" 2>/dev/null || true
+            fi
+            if [ -d "${dir}/signed" ]; then
+              mv "${dir}/signed/"* "${dir}/" 2>/dev/null || true
+              rmdir "${dir}/signed" 2>/dev/null || true
+            fi
+          }
+          normalize_platform linux
+          normalize_platform darwin
+          normalize_platform windows
+          ls -laR artifacts/
+
       - name: Download existing manifest
         continue-on-error: true
         run: curl -fsSL https://cdn.blazium.app/cli/cli.json -o existing-cli.json
