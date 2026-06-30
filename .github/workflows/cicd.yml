@@ -100,12 +100,13 @@ jobs:
 
       - name: GPG Signing build
         if: ${{ matrix.goos == 'windows' }}
-        run: |
-          mkdir signed
+        run: mkdir -p signed
 
       - uses: bioblaze/sslcom-code-signer@v5
         name: Windows Signing
         if: ${{ matrix.goos == 'windows' }}
+        continue-on-error: true
+        id: windows_sign
         with:
           command: sign
           username: ${{ secrets.ES_USERNAME }}
@@ -113,8 +114,31 @@ jobs:
           credential_id: ${{ secrets.CREDENTIAL_ID }}
           totp_secret: ${{ secrets.ES_TOTP_SECRET }}
           file_path: ./build/${{ matrix.output }}
-          output_path: ./signed/${{ matrix.output }}
+          output_path: ./signed
           environment_name: PROD
+
+      - name: Prepare Windows artifact
+        if: ${{ matrix.goos == 'windows' }}
+        id: windows_artifact
+        run: |
+          set -euo pipefail
+          mkdir -p signed
+          DEST="./signed/${{ matrix.output }}"
+
+          if [ -f "$DEST" ]; then
+            echo "Using signed Windows binary at $DEST"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          elif SIGNED="$(find ./signed -type f -name '${{ matrix.output }}' | head -n 1)" && [ -n "$SIGNED" ]; then
+            cp "$SIGNED" "$DEST"
+            echo "Using signed Windows binary from $SIGNED"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Windows code signing failed; publishing unsigned build artifact." >&2
+            cp "./build/${{ matrix.output }}" "$DEST"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          ls -la ./signed/
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -177,9 +201,12 @@ jobs:
           if [[ "${{ matrix.goos }}" != "windows" ]]; then
             SIG_URL="${URL}.sig"
             SIGNING="gpg"
-          else
+          elif [[ "${{ steps.windows_artifact.outputs.signed }}" == "true" ]]; then
             SIG_URL=""
             SIGNING="sslcom"
+          else
+            SIG_URL=""
+            SIGNING=""
           fi
 
           curl -s -X POST "${{ secrets.CEREBRO_URL }}/api/v1/tools" \
@@ -230,9 +257,33 @@ jobs:
           path: artifacts/darwin
 
       - uses: actions/download-artifact@v4
+        continue-on-error: true
+        id: download_windows
         with:
           name: signed-windows
           path: artifacts/windows
+
+      - name: Download Windows CLI fallback from CDN
+        if: steps.download_windows.outcome != 'success'
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/windows
+          MANIFEST="$(curl -fsSL https://cdn.blazium.app/cli/cli.json)"
+          VERSION="${{ steps.version.outputs.simple_version }}"
+          URL="$(echo "$MANIFEST" | jq -r --arg v "$VERSION" '.versions[$v].downloads[] | select(.platform=="windows") | .download_url' | head -n 1)"
+          if [ -z "$URL" ] || [ "$URL" = "null" ]; then
+            URL="$(echo "$MANIFEST" | jq -r '.versions[.latest].downloads[] | select(.platform=="windows") | .download_url' | head -n 1)"
+          fi
+          if [ -z "$URL" ] || [ "$URL" = "null" ]; then
+            echo "Could not resolve a Windows CLI download URL from cli.json." >&2
+            exit 1
+          fi
+          curl -fsSL "$URL" -o artifacts/windows/blazium-cli.exe
+
+      - name: Ensure Windows artifact exists
+        run: |
+          set -euo pipefail
+          test -f artifacts/windows/blazium-cli.exe
 
       - name: Normalize artifact layout
         run: |
