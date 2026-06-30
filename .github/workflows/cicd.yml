@@ -211,17 +211,18 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          pattern: signed-*
-          merge-multiple: true
-          path: artifacts/raw
+          name: signed-linux
+          path: artifacts/linux
 
-      - name: Stage artifacts
-        run: |
-          mkdir -p artifacts/linux artifacts/windows artifacts/darwin
-          cp artifacts/raw/blazium-cli artifacts/linux/blazium-cli 2>/dev/null || true
-          cp artifacts/raw/blazium-cli.sig artifacts/linux/blazium-cli.sig 2>/dev/null || true
-          cp artifacts/raw/blazium-cli.exe artifacts/windows/blazium-cli.exe 2>/dev/null || true
-          find artifacts/raw -type f -name blazium-cli -exec cp {} artifacts/darwin/blazium-cli \; 2>/dev/null || true
+      - uses: actions/download-artifact@v4
+        with:
+          name: signed-darwin
+          path: artifacts/darwin
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: signed-windows
+          path: artifacts/windows
 
       - name: Download existing manifest
         continue-on-error: true
@@ -239,6 +240,14 @@ jobs:
             ARGS+=(--cerebro-manifest "$CEREBRO_MANIFEST")
           fi
           go run ./cmd/generate-cli-manifest "${ARGS[@]}"
+
+      - name: Verify cli.json checksums
+        run: |
+          chmod +x scripts/verify-cli-manifest.sh
+          scripts/verify-cli-manifest.sh \
+            --manifest cli.json \
+            --version "${{ steps.version.outputs.simple_version }}" \
+            --artifacts artifacts
 
       - uses: BetaHuhn/do-spaces-action@v2
         with:
