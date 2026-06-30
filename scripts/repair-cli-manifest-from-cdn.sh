@@ -7,11 +7,11 @@ manifest_url="${CLI_MANIFEST_URL:-https://cdn.blazium.app/cli/cli.json}"
 version="${CLI_REPAIR_VERSION:-}"
 out="${CLI_REPAIR_OUT:-cli.json}"
 
-tmp="$(mktemp)"
-curl -fsSL "$manifest_url" -o "$tmp"
+manifest_file="$(mktemp)"
+curl -fsSL "$manifest_url" -o "$manifest_file"
 
 if [[ -z "$version" ]]; then
-  version="$(jq -r '.latest // empty' "$tmp")"
+  version="$(jq -r '.latest // empty' "$manifest_file")"
 fi
 if [[ -z "$version" ]]; then
   echo "could not determine version; set CLI_REPAIR_VERSION" >&2
@@ -20,7 +20,7 @@ fi
 
 echo "repairing version $version from $manifest_url"
 
-mapfile -t downloads < <(jq -c --arg version "$version" '.versions[$version].downloads // [] | .[]' "$tmp")
+mapfile -t downloads < <(jq -c --arg version "$version" '.versions[$version].downloads // [] | .[]' "$manifest_file")
 if [[ "${#downloads[@]}" -eq 0 ]]; then
   echo "no downloads for version $version" >&2
   exit 1
@@ -50,7 +50,7 @@ for entry in "${downloads[@]}"; do
   fi
 
   echo "fix ${platform}/${arch}: ${want:-<empty>} -> $got (size $size)"
-  tmp="$(jq \
+  next="$(jq \
     --arg version "$version" \
     --arg platform "$platform" \
     --arg arch "$arch" \
@@ -66,14 +66,13 @@ for entry in "${downloads[@]}"; do
             end
           )
       )
-    ' "$tmp")"
-  printf '%s\n' "$tmp" > "${tmp}.next"
-  mv "${tmp}.next" "$tmp"
+    ' "$manifest_file")"
+  printf '%s\n' "$next" > "$manifest_file"
   updated=$((updated + 1))
 done
 
-cp "$tmp" "$out"
-rm -f "$tmp"
+cp "$manifest_file" "$out"
+rm -f "$manifest_file"
 
 if [[ "$updated" -eq 0 ]]; then
   echo "no checksum updates required; wrote $out"
