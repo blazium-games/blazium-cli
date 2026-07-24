@@ -11,7 +11,8 @@ import (
 	"strings"
 )
 
-// TemplateMetadata matches cdn.blazium.app/{channel}/{version}/templates.json entries.
+// TemplateMetadata matches cdn.blazium.app/{channel}/{version}/template_files.json
+// entries (and Cerebro GET /api/v1/templates/{deploy_type}/{version}).
 type TemplateMetadata struct {
 	Filename    string `json:"filename"`
 	DownloadURL string `json:"download_url"`
@@ -32,32 +33,97 @@ func deployTypeName(isNightly bool) string {
 	return channelName(isNightly)
 }
 
+// templateFilesJSONURL is the per-file Cerebro/CDN manifest written by ci_cd.
+func templateFilesJSONURL(version string, isNightly bool) string {
+	ch := channelName(isNightly)
+	return fmt.Sprintf("https://cdn.blazium.app/%s/%s/template_files.json", ch, version)
+}
+
+// templatesJSONURL is legacy: older nightlies stored the per-file array here;
+// current ci_cd restores the Godot {base,mono} bundle at this path.
 func templatesJSONURL(version string, isNightly bool) string {
 	ch := channelName(isNightly)
 	return fmt.Sprintf("https://cdn.blazium.app/%s/%s/templates.json", ch, version)
+}
+
+// detailsJSONURL is the Godot Export Template Manager bundle schema.
+func detailsJSONURL(version string, isNightly bool) string {
+	ch := channelName(isNightly)
+	return fmt.Sprintf("https://cdn.blazium.app/%s/%s/details.json", ch, version)
 }
 
 func cerebroTemplatesURL(deployType, version string) string {
 	if base := strings.TrimSuffix(strings.TrimSpace(os.Getenv("BLAZIUM_CEREBRO_URL")), "/"); base != "" {
 		return fmt.Sprintf("%s/api/v1/templates/%s/%s", base, deployType, version)
 	}
-	return fmt.Sprintf("https://blazium.app/api/templates/%s/%s", deployType, version)
+	// Website may proxy Cerebro public template reads under /api/v1/templates.
+	return fmt.Sprintf("https://blazium.app/api/v1/templates/%s/%s", deployType, version)
 }
 
 func loadTemplateMetadata(version string, isNightly bool) ([]TemplateMetadata, error) {
-	url := templatesJSONURL(version, isNightly)
-	body, err := fetchRemoteJSON(url)
-	if err == nil {
+	// Prefer per-file manifests for individual downloads; keep bundle/TPZ as fallback.
+	candidates := []string{
+		templateFilesJSONURL(version, isNightly),
+		templatesJSONURL(version, isNightly),
+		detailsJSONURL(version, isNightly),
+	}
+
+	var bundleFallback []TemplateMetadata
+	var lastErr error
+	for _, url := range candidates {
+		body, err := fetchRemoteJSON(url)
+		if err != nil {
+			if isHTTPNotFound(err) {
+				continue
+			}
+			return nil, fmt.Errorf("fetch template metadata from %s: %w", url, err)
+		}
 		entries, parseErr := parseTemplateMetadataJSON(body)
 		if parseErr != nil {
-			return nil, fmt.Errorf("parse templates.json: %w", parseErr)
+			lastErr = fmt.Errorf("parse %s: %w", url, parseErr)
+			continue
 		}
-		return entries, nil
+		if len(entries) == 0 {
+			continue
+		}
+		if isPerFileTemplateManifest(entries) {
+			return entries, nil
+		}
+		if bundleFallback == nil {
+			bundleFallback = entries
+		}
 	}
-	if !isHTTPNotFound(err) {
-		return nil, fmt.Errorf("fetch templates.json from %s: %w", url, err)
+
+	cerebroEntries, cerebroErr := loadTemplateMetadataFromCerebro(deployTypeName(isNightly), version)
+	if cerebroErr == nil && len(cerebroEntries) > 0 {
+		return cerebroEntries, nil
 	}
-	return loadTemplateMetadataFromCerebro(deployTypeName(isNightly), version)
+	if len(bundleFallback) > 0 {
+		return bundleFallback, nil
+	}
+	if cerebroErr != nil {
+		if lastErr != nil {
+			return nil, fmt.Errorf("%v; cerebro fallback: %w", lastErr, cerebroErr)
+		}
+		return nil, cerebroErr
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, fmt.Errorf("no template metadata found for %s (%s)", version, deployTypeName(isNightly))
+}
+
+func isPerFileTemplateManifest(entries []TemplateMetadata) bool {
+	for _, e := range entries {
+		name := strings.ToLower(strings.TrimSpace(e.Filename))
+		if name == "" {
+			continue
+		}
+		if !strings.HasSuffix(name, ".tpz") {
+			return true
+		}
+	}
+	return false
 }
 
 func parseTemplateMetadataJSON(body []byte) ([]TemplateMetadata, error) {

@@ -6,16 +6,19 @@ import (
 	"testing"
 )
 
-func TestLoadTemplateMetadataFromCDN(t *testing.T) {
+func TestLoadTemplateMetadataFromTemplateFilesJSON(t *testing.T) {
 	old := httpGet
 	defer func() { httpGet = old }()
 	httpGet = func(url string) ([]byte, error) {
-		if url != "https://cdn.blazium.app/nightly/0.6.707/templates.json" {
+		switch url {
+		case "https://cdn.blazium.app/nightly/0.6.707/template_files.json":
+			return []byte(`[
+				{"filename":"web_nothreads_release.zip","download_url":"https://cdn.example/web.zip","platform":"web","version":"0.6.707.nightly"}
+			]`), nil
+		default:
 			t.Fatalf("unexpected url %s", url)
+			return nil, errHTTP404
 		}
-		return []byte(`[
-			{"filename":"web_nothreads_release.zip","download_url":"https://cdn.example/web.zip","platform":"web","version":"0.6.707 stable"}
-		]`), nil
 	}
 	got, err := loadTemplateMetadata("0.6.707", true)
 	if err != nil {
@@ -26,14 +29,69 @@ func TestLoadTemplateMetadataFromCDN(t *testing.T) {
 	}
 }
 
+func TestLoadTemplateMetadataPrefersTemplateFilesOverBundle(t *testing.T) {
+	old := httpGet
+	defer func() { httpGet = old }()
+	httpGet = func(url string) ([]byte, error) {
+		switch url {
+		case "https://cdn.blazium.app/nightly/0.6.744/template_files.json":
+			return []byte(`[
+				{"filename":"linux_release.x86_64.zip","download_url":"https://cdn.example/linux.zip","platform":"linux","version":"0.6.744.nightly"}
+			]`), nil
+		case "https://cdn.blazium.app/nightly/0.6.744/templates.json",
+			"https://cdn.blazium.app/nightly/0.6.744/details.json":
+			t.Fatalf("should not fetch %s when template_files.json succeeds", url)
+			return nil, errHTTP404
+		default:
+			t.Fatalf("unexpected url %s", url)
+			return nil, errHTTP404
+		}
+	}
+	got, err := loadTemplateMetadata("0.6.744", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Platform != "linux" {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestLoadTemplateMetadataFallsBackToArrayTemplatesJSON(t *testing.T) {
+	old := httpGet
+	defer func() { httpGet = old }()
+	httpGet = func(url string) ([]byte, error) {
+		switch url {
+		case "https://cdn.blazium.app/nightly/0.6.744/template_files.json":
+			return nil, errHTTP404
+		case "https://cdn.blazium.app/nightly/0.6.744/templates.json":
+			// Transition era: per-file array lived at templates.json
+			return []byte(`[
+				{"filename":"android_debug.apk","download_url":"https://cdn.example/android.apk","platform":"android","version":"0.6.744.nightly"}
+			]`), nil
+		default:
+			t.Fatalf("unexpected url %s", url)
+			return nil, errHTTP404
+		}
+	}
+	got, err := loadTemplateMetadata("0.6.744", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Filename != "android_debug.apk" {
+		t.Fatalf("got %+v", got)
+	}
+}
+
 func TestLoadTemplateMetadataCerebroFallback(t *testing.T) {
 	old := httpGet
 	defer func() { httpGet = old }()
 	httpGet = func(url string) ([]byte, error) {
 		switch url {
-		case "https://cdn.blazium.app/nightly/0.6.707/templates.json":
+		case "https://cdn.blazium.app/nightly/0.6.707/template_files.json",
+			"https://cdn.blazium.app/nightly/0.6.707/templates.json",
+			"https://cdn.blazium.app/nightly/0.6.707/details.json":
 			return nil, errHTTP404
-		case "https://blazium.app/api/templates/nightly/0.6.707":
+		case "https://blazium.app/api/v1/templates/nightly/0.6.707":
 			return []byte(`{"success":true,"data":[{"filename":"linux_release.x86_64.zip","download_url":"https://cdn.example/linux.zip","platform":"linux","arch":"x86_64"}]}`), nil
 		default:
 			t.Fatalf("unexpected url %s", url)
@@ -53,18 +111,29 @@ func TestLoadTemplateMetadataLegacyBundle(t *testing.T) {
 	old := httpGet
 	defer func() { httpGet = old }()
 	httpGet = func(url string) ([]byte, error) {
-		return []byte(`{
-			"base": {
-				"filename": "Blazium_v0.6.707_export_templates.tpz",
-				"url": "https://cdn.example/base.tpz",
-				"checksum": {"256": "abc123"}
-			},
-			"mono": {
-				"filename": "Blazium_v0.6.707_mono_export_templates.tpz",
-				"url": "https://cdn.example/mono.tpz",
-				"checksum": {"256": "def456"}
-			}
-		}`), nil
+		switch url {
+		case "https://cdn.blazium.app/nightly/0.6.707/template_files.json":
+			return nil, errHTTP404
+		case "https://cdn.blazium.app/nightly/0.6.707/templates.json":
+			return []byte(`{
+				"base": {
+					"filename": "Blazium_v0.6.707_export_templates.tpz",
+					"url": "https://cdn.example/base.tpz",
+					"checksum": {"256": "abc123"}
+				},
+				"mono": {
+					"filename": "Blazium_v0.6.707_mono_export_templates.tpz",
+					"url": "https://cdn.example/mono.tpz",
+					"checksum": {"256": "def456"}
+				}
+			}`), nil
+		case "https://cdn.blazium.app/nightly/0.6.707/details.json",
+			"https://blazium.app/api/v1/templates/nightly/0.6.707":
+			return nil, errHTTP404
+		default:
+			t.Fatalf("unexpected url %s", url)
+			return nil, errHTTP404
+		}
 	}
 	got, err := loadTemplateMetadata("0.6.707", true)
 	if err != nil {
@@ -75,6 +144,51 @@ func TestLoadTemplateMetadataLegacyBundle(t *testing.T) {
 	}
 	if !got[1].Mono || got[1].Sha256 != "def456" {
 		t.Fatalf("mono bundle: %+v", got[1])
+	}
+}
+
+func TestLoadTemplateMetadataDetailsJSONFallback(t *testing.T) {
+	old := httpGet
+	defer func() { httpGet = old }()
+	httpGet = func(url string) ([]byte, error) {
+		switch url {
+		case "https://cdn.blazium.app/nightly/0.6.744/template_files.json",
+			"https://cdn.blazium.app/nightly/0.6.744/templates.json",
+			"https://blazium.app/api/v1/templates/nightly/0.6.744":
+			return nil, errHTTP404
+		case "https://cdn.blazium.app/nightly/0.6.744/details.json":
+			return []byte(`{
+				"base": {
+					"filename": "Blazium_v0.6.744_export_templates.tpz",
+					"url": "https://cdn.example/base.tpz",
+					"checksum": {"256": "aaa"}
+				},
+				"mono": {
+					"filename": "Blazium_v0.6.744_mono_export_templates.tpz",
+					"url": "https://cdn.example/mono.tpz",
+					"checksum": {"256": "bbb"}
+				}
+			}`), nil
+		default:
+			t.Fatalf("unexpected url %s", url)
+			return nil, errHTTP404
+		}
+	}
+	got, err := loadTemplateMetadata("0.6.744", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Filename != "Blazium_v0.6.744_export_templates.tpz" {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestIsPerFileTemplateManifest(t *testing.T) {
+	if !isPerFileTemplateManifest([]TemplateMetadata{{Filename: "linux_release.x86_64.zip"}}) {
+		t.Fatal("zip should count as per-file")
+	}
+	if isPerFileTemplateManifest([]TemplateMetadata{{Filename: "Blazium_v0.6.744_export_templates.tpz"}}) {
+		t.Fatal("tpz-only should not count as per-file")
 	}
 }
 
@@ -105,10 +219,10 @@ func TestSelectRequiredRuntimeTemplates(t *testing.T) {
 		t.Fatalf("debug len=%d got %+v", len(got), got)
 	}
 	want := map[string]bool{
-		"web_nothreads_debug.zip":              true,
-		"linux_debug.x86_64":                   true,
-		"windows_debug_x86_64.exe":             true,
-		"windows_debug_x86_64_console.exe":     true,
+		"web_nothreads_debug.zip":          true,
+		"linux_debug.x86_64":               true,
+		"windows_debug_x86_64.exe":         true,
+		"windows_debug_x86_64_console.exe": true,
 	}
 	for _, m := range got {
 		if !want[m.Filename] {
