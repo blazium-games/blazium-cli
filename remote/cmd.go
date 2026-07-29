@@ -458,7 +458,278 @@ func NewCommand() *cobra.Command {
 		},
 	}
 
-	remoteCmd.AddCommand(statusCmd, listCmd, execCmd, evalCmd, evalGDCmd, evalLuaCmd, configCmd, instancesCmd, enableCmd, doctorCmd)
+	var logSince, logCursor uint64
+	var logLimit int
+	logsCmd := &cobra.Command{
+		Use:   "logs",
+		Short: "Fetch engine/editor logs (incremental via --since)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := clientFrom(cmd)
+			if err != nil {
+				output.ErrorJSON(format, err)
+				return err
+			}
+			out, err := c.Logs(logSince, logCursor, logLimit, false)
+			if err != nil {
+				output.ErrorJSON(format, err)
+				return err
+			}
+			return output.Write(format, out)
+		},
+	}
+	logsCmd.Flags().Uint64Var(&logSince, "since", 0, "Only entries with id greater than this")
+	logsCmd.Flags().Uint64Var(&logCursor, "cursor", 0, "Start paging at this entry id")
+	logsCmd.Flags().IntVar(&logLimit, "limit", 200, "Page size (max 1000)")
+
+	var errSince uint64
+	var errLimit int
+	errorsCmd := &cobra.Command{
+		Use:   "errors",
+		Short: "Fetch error/warning log entries",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := clientFrom(cmd)
+			if err != nil {
+				output.ErrorJSON(format, err)
+				return err
+			}
+			out, err := c.Logs(errSince, 0, errLimit, true)
+			if err != nil {
+				output.ErrorJSON(format, err)
+				return err
+			}
+			return output.Write(format, out)
+		},
+	}
+	errorsCmd.Flags().Uint64Var(&errSince, "since", 0, "Only entries with id greater than this")
+	errorsCmd.Flags().IntVar(&errLimit, "limit", 200, "Page size (max 1000)")
+
+	debuggerCmd := &cobra.Command{
+		Use:   "debugger",
+		Short: "Debugger status, stack, breakpoints, and clear",
+	}
+	debuggerCmd.AddCommand(&cobra.Command{
+		Use:   "info",
+		Short: "Full debugger dump (stack, errors, breakpoints, error breaks)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := clientFrom(cmd)
+			if err != nil {
+				return err
+			}
+			out, err := c.Exec("debugger_info", nil)
+			if err != nil {
+				output.ErrorJSON(format, err)
+				return err
+			}
+			return output.Write(format, out)
+		},
+	})
+	debuggerCmd.AddCommand(&cobra.Command{
+		Use:   "status",
+		Short: "Debugger status subset",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := clientFrom(cmd)
+			if err != nil {
+				return err
+			}
+			out, err := c.Exec("debugger_status", nil)
+			if err != nil {
+				output.ErrorJSON(format, err)
+				return err
+			}
+			return output.Write(format, out)
+		},
+	})
+	debuggerCmd.AddCommand(&cobra.Command{
+		Use:   "stack",
+		Short: "Stack frames when broken",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := clientFrom(cmd)
+			if err != nil {
+				return err
+			}
+			out, err := c.Exec("debugger_stack", nil)
+			if err != nil {
+				output.ErrorJSON(format, err)
+				return err
+			}
+			return output.Write(format, out)
+		},
+	})
+	debuggerCmd.AddCommand(&cobra.Command{
+		Use:   "breakpoints",
+		Short: "List breakpoints",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := clientFrom(cmd)
+			if err != nil {
+				return err
+			}
+			out, err := c.Exec("debugger_list_breakpoints", nil)
+			if err != nil {
+				output.ErrorJSON(format, err)
+				return err
+			}
+			return output.Write(format, out)
+		},
+	})
+	debuggerCmd.AddCommand(&cobra.Command{
+		Use:   "error-breaks",
+		Short: "Recent error-breakpoint / failed-break hits",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := clientFrom(cmd)
+			if err != nil {
+				return err
+			}
+			out, err := c.Exec("debugger_error_breaks", nil)
+			if err != nil {
+				output.ErrorJSON(format, err)
+				return err
+			}
+			return output.Write(format, out)
+		},
+	})
+	var clearErrors, clearErrorBreaks, clearLogs bool
+	clearCmd := &cobra.Command{
+		Use:   "clear",
+		Short: "Clear debugger errors and remote error-break ring",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := clientFrom(cmd)
+			if err != nil {
+				return err
+			}
+			// Defaults: errors+error_breaks true, logs false — unless flags explicitly set.
+			argsMap := map[string]any{
+				"errors":       true,
+				"error_breaks": true,
+				"logs":         false,
+			}
+			if cmd.Flags().Changed("errors") {
+				argsMap["errors"] = clearErrors
+			}
+			if cmd.Flags().Changed("error-breaks") {
+				argsMap["error_breaks"] = clearErrorBreaks
+			}
+			if cmd.Flags().Changed("logs") {
+				argsMap["logs"] = clearLogs
+			}
+			out, err := c.Exec("debugger_clear", argsMap)
+			if err != nil {
+				output.ErrorJSON(format, err)
+				return err
+			}
+			return output.Write(format, out)
+		},
+	}
+	clearCmd.Flags().BoolVar(&clearErrors, "errors", true, "Clear Errors tab")
+	clearCmd.Flags().BoolVar(&clearErrorBreaks, "error-breaks", true, "Clear error-break ring")
+	clearCmd.Flags().BoolVar(&clearLogs, "logs", false, "Also clear remote print log ring")
+	debuggerCmd.AddCommand(clearCmd)
+
+	failedRunCmd := &cobra.Command{
+		Use:   "failed-run",
+		Short: "Bundle logs, debugger, Autowork, and evidence files",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := clientFrom(cmd)
+			if err != nil {
+				return err
+			}
+			out, err := c.Exec("get_failed_run", nil)
+			if err != nil {
+				output.ErrorJSON(format, err)
+				return err
+			}
+			return output.Write(format, out)
+		},
+	}
+
+	autoworkCmd := &cobra.Command{
+		Use:   "autowork",
+		Short: "Trigger Autowork and fetch results",
+	}
+	var awDir, awFile, awTest, awPrefix, awSuffix string
+	var awWait bool
+	var awWaitTimeout time.Duration
+	awRunCmd := &cobra.Command{
+		Use:   "run",
+		Short: "Start an Autowork job",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := clientFrom(cmd)
+			if err != nil {
+				return err
+			}
+			argMap := map[string]any{}
+			if awDir != "" {
+				argMap["dir"] = awDir
+			}
+			if awFile != "" {
+				argMap["file"] = awFile
+			}
+			if awTest != "" {
+				argMap["test_name"] = awTest
+			}
+			if awPrefix != "" {
+				argMap["prefix"] = awPrefix
+			}
+			if awSuffix != "" {
+				argMap["suffix"] = awSuffix
+			}
+			out, err := c.Exec("autowork_run", argMap)
+			if err != nil {
+				output.ErrorJSON(format, err)
+				return err
+			}
+			if awWait {
+				results, err := c.WaitAutowork(awWaitTimeout)
+				if err != nil {
+					output.ErrorJSON(format, err)
+					return err
+				}
+				return output.Write(format, results)
+			}
+			return output.Write(format, out)
+		},
+	}
+	awRunCmd.Flags().StringVar(&awDir, "dir", "", "Test directory (res://...)")
+	awRunCmd.Flags().StringVar(&awFile, "file", "", "Single test script path")
+	awRunCmd.Flags().StringVar(&awTest, "test", "", "Filter by test name")
+	awRunCmd.Flags().StringVar(&awPrefix, "prefix", "", "Script prefix filter")
+	awRunCmd.Flags().StringVar(&awSuffix, "suffix", "", "Script suffix filter")
+	awRunCmd.Flags().BoolVar(&awWait, "wait", false, "Poll until job completes")
+	awRunCmd.Flags().DurationVar(&awWaitTimeout, "wait-timeout", 10*time.Minute, "Timeout for --wait")
+	autoworkCmd.AddCommand(awRunCmd)
+	autoworkCmd.AddCommand(&cobra.Command{
+		Use:   "status",
+		Short: "Autowork job status",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := clientFrom(cmd)
+			if err != nil {
+				return err
+			}
+			out, err := c.Exec("autowork_status", nil)
+			if err != nil {
+				output.ErrorJSON(format, err)
+				return err
+			}
+			return output.Write(format, out)
+		},
+	})
+	autoworkCmd.AddCommand(&cobra.Command{
+		Use:   "results",
+		Short: "Autowork job results",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := clientFrom(cmd)
+			if err != nil {
+				return err
+			}
+			out, err := c.Exec("autowork_results", nil)
+			if err != nil {
+				output.ErrorJSON(format, err)
+				return err
+			}
+			return output.Write(format, out)
+		},
+	})
+
+	remoteCmd.AddCommand(statusCmd, listCmd, execCmd, evalCmd, evalGDCmd, evalLuaCmd, configCmd, instancesCmd, enableCmd, doctorCmd, logsCmd, errorsCmd, debuggerCmd, failedRunCmd, autoworkCmd)
 	return remoteCmd
 }
 

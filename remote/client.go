@@ -159,6 +159,47 @@ func (c *Client) Eval(expression, language string) (map[string]any, error) {
 	return out, err
 }
 
+// Logs calls GET /v1/logs with optional since/cursor/limit/errors_only.
+func (c *Client) Logs(since, cursor uint64, limit int, errorsOnly bool) (map[string]any, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	q := fmt.Sprintf("/v1/logs?limit=%d", limit)
+	if since > 0 {
+		q += fmt.Sprintf("&since=%d", since)
+	}
+	if cursor > 0 {
+		q += fmt.Sprintf("&cursor=%d", cursor)
+	}
+	if errorsOnly {
+		q += "&errors_only=1"
+	}
+	out, _, err := c.do(http.MethodGet, q, nil)
+	return out, err
+}
+
+// WaitAutowork polls autowork_status until done/failed or timeout.
+func (c *Client) WaitAutowork(timeout time.Duration) (map[string]any, error) {
+	deadline := time.Now().Add(timeout)
+	var last map[string]any
+	for time.Now().Before(deadline) {
+		st, err := c.Exec("autowork_status", nil)
+		if err != nil {
+			return nil, err
+		}
+		last = st
+		state, _ := st["state"].(string)
+		if state == "done" || state == "failed" || state == "idle" {
+			return c.Exec("autowork_results", nil)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	if last == nil {
+		return nil, fmt.Errorf("autowork wait timed out")
+	}
+	return last, fmt.Errorf("autowork wait timed out (state=%v)", last["state"])
+}
+
 // Discover scans local ports for /v1/health.
 func Discover(host string, startPort, endPort int, token string, timeout time.Duration) []Config {
 	var found []Config
