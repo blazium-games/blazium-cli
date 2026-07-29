@@ -1,4 +1,4 @@
-module blazium-cli
+module github.com/blazium-games/blazium-cli
 
 go 1.23.2
 

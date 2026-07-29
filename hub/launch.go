@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"blazium-cli/output"
-	"blazium-cli/remote"
+	"github.com/blazium-games/blazium-cli/output"
+	"github.com/blazium-games/blazium-cli/remote"
 )
 
 // LaunchOptions configures editor launch with remote_control / JustAMCP.
@@ -22,10 +22,10 @@ type LaunchOptions struct {
 
 // LaunchResult describes a launched editor instance.
 type LaunchResult struct {
-	Instance     remote.RemoteInstance
-	Args         []string
+	Instance      remote.RemoteInstance
+	Args          []string
 	RemoteEnabled bool
-	MCPEnabled   bool
+	MCPEnabled    bool
 }
 
 // BuildEditorArgs builds argv after the editor binary (or after macOS --args).

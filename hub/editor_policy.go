@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"blazium-cli/cdn"
-	"blazium-cli/output"
+	"github.com/blazium-games/blazium-cli/cdn"
+	"github.com/blazium-games/blazium-cli/output"
 )
 
 const (

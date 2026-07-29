@@ -5,9 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"blazium-cli/cdn"
-	"blazium-cli/editorinstall"
-	"blazium-cli/output"
+	"github.com/blazium-games/blazium-cli/cdn"
+	"github.com/blazium-games/blazium-cli/editorinstall"
+	"github.com/blazium-games/blazium-cli/output"
 
 	"github.com/spf13/cobra"
 )
@@ -493,11 +493,11 @@ Unset policy defaults to latest release.`,
 		}
 		if fullProfile {
 			out["profile"] = map[string]any{
-				"name":            profile.Name,
-				"features":        profile.Features,
-				"editor_version":  profile.EditorVersion,
-				"justamcp":        profile.JustAMCP,
-				"remote_control":  profile.RemoteControl,
+				"name":           profile.Name,
+				"features":       profile.Features,
+				"editor_version": profile.EditorVersion,
+				"justamcp":       profile.JustAMCP,
+				"remote_control": profile.RemoteControl,
 			}
 		}
 		return output.Write(format(), out)

@@ -174,7 +174,7 @@ func readTPZVersion(files []*zip.File) (version, contentsPrefix string, err erro
 	return "", "", fmt.Errorf("version.txt not found in tpz")
 }
 
-// TemplateShortVersion returns the version prefix before a space (Godot alias).
+// TemplateShortVersion returns the version prefix before a space.
 func TemplateShortVersion(version string) string {
 	if idx := strings.Index(version, " "); idx >= 0 {
 		return version[:idx]

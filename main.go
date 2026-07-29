@@ -6,10 +6,10 @@ import (
 	"os"
 	"strings"
 
-	"blazium-cli/hub"
-	"blazium-cli/output"
-	"blazium-cli/remote"
-	"blazium-cli/upgrade"
+	"github.com/blazium-games/blazium-cli/hub"
+	"github.com/blazium-games/blazium-cli/output"
+	"github.com/blazium-games/blazium-cli/remote"
+	"github.com/blazium-games/blazium-cli/upgrade"
 
 	"github.com/spf13/cobra"
 )
@@ -35,7 +35,7 @@ Hub commands:
   install, uninstall, editors, install-path, open, load, projects, upgrade
 
 Remote control (running editor):
-  remote status|list|exec|eval|instances|config|enable|doctor
+  remote status|list|exec|eval|logs|debugger|failed-run|autowork|instances|config|enable|doctor
 
 Configuration:
   Editors/projects: %APPDATA%\blazium\hub.json (Windows) or ~/.config/blazium/hub.json

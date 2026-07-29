@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"blazium-cli/manifest"
-	"blazium-cli/output"
+	"github.com/blazium-games/blazium-cli/manifest"
+	"github.com/blazium-games/blazium-cli/output"
 
 	"github.com/spf13/cobra"
 )
@@ -63,10 +63,10 @@ verifies sha256, and replaces the running binary.`,
 				return err
 			}
 			return output.Write(format, map[string]any{
-				"ok":              true,
-				"previous":        opts.CurrentVersion,
-				"installed":       plan.Version,
-				"path":            plan.DestPath,
+				"ok":        true,
+				"previous":  opts.CurrentVersion,
+				"installed": plan.Version,
+				"path":      plan.DestPath,
 			})
 		},
 	}

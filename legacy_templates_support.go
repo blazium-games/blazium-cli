@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 
-	"blazium-cli/cdn"
-	"blazium-cli/editorinstall"
+	"github.com/blazium-games/blazium-cli/cdn"
+	"github.com/blazium-games/blazium-cli/editorinstall"
 )
 
 // Shims so templates.go / tests keep compiling after Hub CLI refactor.

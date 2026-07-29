@@ -11,14 +11,14 @@ import (
 	"strings"
 	"time"
 
-	"blazium-cli/manifest"
+	"github.com/blazium-games/blazium-cli/manifest"
 )
 
 func main() {
 	version := flag.String("version", "", "CLI semver to publish")
 	released := flag.String("released-on", "", "RFC3339 release timestamp")
 	base := flag.String("base-manifest", "", "Existing cli.json to merge")
-	cerebroURL := flag.String("cerebro-manifest", "", "Optional Cerebro manifest URL")
+	cerebroURL := flag.String("cerebro-manifest", "", "Optional Blazium templates API / registry manifest URL")
 	out := flag.String("out", "cli.json", "Output manifest path")
 	artifactRoot := flag.String("artifacts", "artifacts", "Directory containing platform subdirs")
 	flag.Parse()

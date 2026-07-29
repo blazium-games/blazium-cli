@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"blazium-cli/output"
+	"github.com/blazium-games/blazium-cli/output"
 
 	"github.com/spf13/cobra"
 )

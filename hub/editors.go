@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"blazium-cli/editorinstall"
+	"github.com/blazium-games/blazium-cli/editorinstall"
 )
 
 // FindEditor returns the registered editor for version, or nil.
