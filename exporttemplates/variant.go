@@ -1,55 +1,57 @@
-package main
+package exporttemplates
 
 import (
 	"os"
 	"strings"
 )
 
-// TemplateVariant selects debug or release export template files.
-type TemplateVariant string
+// Variant selects debug or release export template files.
+type Variant string
 
 const (
-	TemplateVariantDebug   TemplateVariant = "debug"
-	TemplateVariantRelease TemplateVariant = "release"
+	VariantDebug   Variant = "debug"
+	VariantRelease Variant = "release"
 )
 
-func TemplateVariantFromEnv() TemplateVariant {
-	return TemplateVariantFromString(os.Getenv("BLAZIUM_TEMPLATE_VARIANT"))
+// VariantFromEnv reads BLAZIUM_TEMPLATE_VARIANT (default release).
+func VariantFromEnv() Variant {
+	return VariantFromString(os.Getenv("BLAZIUM_TEMPLATE_VARIANT"))
 }
 
-func TemplateVariantFromString(v string) TemplateVariant {
+// VariantFromString parses a variant string; empty defaults to release.
+func VariantFromString(v string) Variant {
 	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "release":
-		return TemplateVariantRelease
+	case "debug":
+		return VariantDebug
 	default:
-		return TemplateVariantDebug
+		return VariantRelease
 	}
 }
 
-func (v TemplateVariant) String() string {
-	if v == TemplateVariantRelease {
-		return "release"
+func (v Variant) String() string {
+	if v == VariantDebug {
+		return "debug"
 	}
-	return "debug"
+	return "release"
 }
 
-func webTemplateName(v TemplateVariant) string {
+func webTemplateName(v Variant) string {
 	return "web_nothreads_" + v.String() + ".zip"
 }
 
-func linuxTemplateName(v TemplateVariant) string {
+func linuxTemplateName(v Variant) string {
 	return "linux_" + v.String() + ".x86_64"
 }
 
-func windowsNormalTemplateName(v TemplateVariant) string {
+func windowsNormalTemplateName(v Variant) string {
 	return "windows_" + v.String() + "_x86_64.exe"
 }
 
-func windowsConsoleTemplateName(v TemplateVariant) string {
+func windowsConsoleTemplateName(v Variant) string {
 	return "windows_" + v.String() + "_x86_64_console.exe"
 }
 
-func matchesTemplateVariant(name string, variant TemplateVariant) bool {
+func matchesTemplateVariant(name string, variant Variant) bool {
 	lower := strings.ToLower(name)
 	want := variant.String()
 	if strings.Contains(lower, want) {

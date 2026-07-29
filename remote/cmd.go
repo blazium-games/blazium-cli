@@ -1,6 +1,7 @@
 package remote
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -14,12 +15,22 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Options configures the remote command group from root flags.
+type Options struct {
+	Format *string
+	Quiet  *bool
+}
+
 // NewCommand returns the `remote` command group.
-func NewCommand() *cobra.Command {
+func NewCommand(opts Options) *cobra.Command {
 	base := DefaultConfig()
-	var format string
+	format := func() string {
+		if opts.Format != nil {
+			return *opts.Format
+		}
+		return "human"
+	}
 	var discover bool
-	var quiet bool
 	var instanceID string
 	var projectRef string
 	var portFlag int
@@ -30,18 +41,13 @@ func NewCommand() *cobra.Command {
 		Use:   "remote",
 		Short: "Control a running Blazium editor via remote_control HTTP API",
 		Long:  "Talk to the remote_control module (GET/POST /v1/*) for status, command execution, and gated eval.",
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			output.Quiet = quiet
-		},
 	}
 
 	remoteCmd.PersistentFlags().StringVar(&hostFlag, "host", base.Host, "Remote control host")
 	remoteCmd.PersistentFlags().IntVar(&portFlag, "port", base.Port, "Remote control port")
 	remoteCmd.PersistentFlags().StringVar(&tokenFlag, "token", base.Token, "Bearer token (or BLAZIUM_REMOTE_TOKEN)")
 	remoteCmd.PersistentFlags().DurationVar(&base.Timeout, "timeout", base.Timeout, "HTTP timeout")
-	remoteCmd.PersistentFlags().StringVar(&format, "format", "human", "Output format: human, json, or tsv")
 	remoteCmd.PersistentFlags().BoolVar(&discover, "discover", false, "Scan local ports 6500-6520 for /v1/health")
-	remoteCmd.PersistentFlags().BoolVar(&quiet, "quiet", false, "Suppress warnings and non-fatal notices")
 	remoteCmd.PersistentFlags().StringVar(&instanceID, "instance", "", "Target instance id (6-char)")
 	remoteCmd.PersistentFlags().StringVar(&projectRef, "project", "", "Target project path or registered name")
 
@@ -157,19 +163,19 @@ func NewCommand() *cobra.Command {
 					}
 					list = append(list, st)
 				}
-				return output.Write(format, map[string]any{"instances": list})
+				return output.Write(format(), map[string]any{"instances": list})
 			}
 			c, err := clientFrom(cmd)
 			if err != nil {
-				output.ErrorJSON(format, err)
+				output.ErrorJSON(format(), err)
 				return err
 			}
 			st, err := c.Status()
 			if err != nil {
-				output.ErrorJSON(format, err)
+				output.ErrorJSON(format(), err)
 				return err
 			}
-			return output.Write(format, st)
+			return output.Write(format(), st)
 		},
 	}
 
@@ -179,15 +185,15 @@ func NewCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := clientFrom(cmd)
 			if err != nil {
-				output.ErrorJSON(format, err)
+				output.ErrorJSON(format(), err)
 				return err
 			}
 			out, err := c.Commands()
 			if err != nil {
-				output.ErrorJSON(format, err)
+				output.ErrorJSON(format(), err)
 				return err
 			}
-			return output.Write(format, out)
+			return output.Write(format(), out)
 		},
 	}
 
@@ -199,7 +205,7 @@ func NewCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := clientFrom(cmd)
 			if err != nil {
-				output.ErrorJSON(format, err)
+				output.ErrorJSON(format(), err)
 				return err
 			}
 			argMap := map[string]any{}
@@ -215,14 +221,14 @@ func NewCommand() *cobra.Command {
 			}
 			out, err := c.Exec(args[0], argMap)
 			if err != nil {
-				output.ErrorJSON(format, err)
+				output.ErrorJSON(format(), err)
 				return err
 			}
 			if ok, exists := out["ok"].(bool); exists && !ok {
-				output.ErrorJSON(format, fmt.Errorf("%v", out["error"]))
+				output.ErrorJSON(format(), fmt.Errorf("%v", out["error"]))
 				return fmt.Errorf("%v", out["error"])
 			}
-			return output.Write(format, out)
+			return output.Write(format(), out)
 		},
 	}
 	execCmd.Flags().StringVar(&jsonArgs, "json-args", "", "JSON object of command arguments")
@@ -230,19 +236,19 @@ func NewCommand() *cobra.Command {
 	runEval := func(cmd *cobra.Command, language, expression string) error {
 		c, err := clientFrom(cmd)
 		if err != nil {
-			output.ErrorJSON(format, err)
+			output.ErrorJSON(format(), err)
 			return err
 		}
 		out, err := c.Eval(expression, language)
 		if err != nil {
-			output.ErrorJSON(format, err)
+			output.ErrorJSON(format(), err)
 			return err
 		}
 		if ok, exists := out["ok"].(bool); exists && !ok {
-			output.ErrorJSON(format, fmt.Errorf("%v", out["error"]))
+			output.ErrorJSON(format(), fmt.Errorf("%v", out["error"]))
 			return fmt.Errorf("%v", out["error"])
 		}
-		return output.Write(format, out)
+		return output.Write(format(), out)
 	}
 
 	evalCmd := &cobra.Command{
@@ -298,14 +304,14 @@ func NewCommand() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return output.Write(format, map[string]any{
+				return output.Write(format(), map[string]any{
 					"key": key, "value": lang, "config_path": path,
 					"env_override_set": strings.TrimSpace(os.Getenv("BLAZIUM_REMOTE_EVAL_DEFAULT")) != "",
 				})
 			case "enable-on-open":
-				return output.Write(format, map[string]any{"key": key, "value": EnableOnOpen(cfg), "config_path": path})
+				return output.Write(format(), map[string]any{"key": key, "value": EnableOnOpen(cfg), "config_path": path})
 			case "enable-mcp-on-load":
-				return output.Write(format, map[string]any{"key": key, "value": EnableMCPOnLoad(cfg), "config_path": path})
+				return output.Write(format(), map[string]any{"key": key, "value": EnableMCPOnLoad(cfg), "config_path": path})
 			default:
 				return fmt.Errorf("unknown config key %q (supported: eval-default, enable-on-open, enable-mcp-on-load)", key)
 			}
@@ -323,7 +329,7 @@ func NewCommand() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return output.Write(format, map[string]any{"ok": true, "key": args[0], "value": lang, "config_path": path})
+				return output.Write(format(), map[string]any{"ok": true, "key": args[0], "value": lang, "config_path": path})
 			case "enable-on-open":
 				v, err := strconv.ParseBool(args[1])
 				if err != nil {
@@ -332,7 +338,7 @@ func NewCommand() *cobra.Command {
 				if err := SetEnableOnOpen(v); err != nil {
 					return err
 				}
-				return output.Write(format, map[string]any{"ok": true, "key": args[0], "value": v, "config_path": path})
+				return output.Write(format(), map[string]any{"ok": true, "key": args[0], "value": v, "config_path": path})
 			case "enable-mcp-on-load":
 				v, err := strconv.ParseBool(args[1])
 				if err != nil {
@@ -341,7 +347,7 @@ func NewCommand() *cobra.Command {
 				if err := SetEnableMCPOnLoad(v); err != nil {
 					return err
 				}
-				return output.Write(format, map[string]any{"ok": true, "key": args[0], "value": v, "config_path": path})
+				return output.Write(format(), map[string]any{"ok": true, "key": args[0], "value": v, "config_path": path})
 			default:
 				return fmt.Errorf("unknown config key %q (supported: eval-default, enable-on-open, enable-mcp-on-load)", args[0])
 			}
@@ -376,7 +382,7 @@ func NewCommand() *cobra.Command {
 					"editor":       inst.EditorVersion,
 					"started_at":   inst.StartedAt,
 				}
-				if strings.EqualFold(format, "json") {
+				if strings.EqualFold(format(), "json") {
 					row["token"] = inst.RemoteToken
 				} else {
 					row["token"] = redactToken(inst.RemoteToken)
@@ -391,7 +397,7 @@ func NewCommand() *cobra.Command {
 				}
 				out["closed"] = closed
 			}
-			return output.Write(format, out)
+			return output.Write(format(), out)
 		},
 	}
 	instancesCmd.Flags().BoolVar(&showAll, "all", false, "Include closed instance history")
@@ -407,7 +413,7 @@ func NewCommand() *cobra.Command {
 				projectPath = "."
 			}
 			if err := enableProject(projectPath, projectPort, allowEval); err != nil {
-				output.ErrorJSON(format, err)
+				output.ErrorJSON(format(), err)
 				return err
 			}
 			msg := map[string]any{
@@ -416,7 +422,7 @@ func NewCommand() *cobra.Command {
 				"enabled": true,
 				"hint":    "Restart the editor with this project, or pass --enable-remote-control",
 			}
-			return output.Write(format, msg)
+			return output.Write(format(), msg)
 		},
 	}
 	enableCmd.Flags().StringVar(&projectPath, "path", ".", "Project directory containing project.godot")
@@ -429,7 +435,7 @@ func NewCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := clientFrom(cmd)
 			if err != nil {
-				output.ErrorJSON(format, err)
+				output.ErrorJSON(format(), err)
 				return err
 			}
 			report := map[string]any{
@@ -446,7 +452,7 @@ func NewCommand() *cobra.Command {
 					ports = append(ports, f.Port)
 				}
 				report["discovered_ports"] = ports
-				_ = output.Write(format, report)
+				_ = output.Write(format(), report)
 				return fmt.Errorf("remote_control not reachable at %s:%d", c.Cfg.Host, c.Cfg.Port)
 			}
 			report["healthy"] = true
@@ -454,7 +460,7 @@ func NewCommand() *cobra.Command {
 			if st, err := c.Status(); err == nil {
 				report["status"] = st
 			}
-			return output.Write(format, report)
+			return output.Write(format(), report)
 		},
 	}
 
@@ -466,15 +472,15 @@ func NewCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := clientFrom(cmd)
 			if err != nil {
-				output.ErrorJSON(format, err)
+				output.ErrorJSON(format(), err)
 				return err
 			}
 			out, err := c.Logs(logSince, logCursor, logLimit, false)
 			if err != nil {
-				output.ErrorJSON(format, err)
+				output.ErrorJSON(format(), err)
 				return err
 			}
-			return output.Write(format, out)
+			return output.Write(format(), out)
 		},
 	}
 	logsCmd.Flags().Uint64Var(&logSince, "since", 0, "Only entries with id greater than this")
@@ -489,15 +495,15 @@ func NewCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := clientFrom(cmd)
 			if err != nil {
-				output.ErrorJSON(format, err)
+				output.ErrorJSON(format(), err)
 				return err
 			}
 			out, err := c.Logs(errSince, 0, errLimit, true)
 			if err != nil {
-				output.ErrorJSON(format, err)
+				output.ErrorJSON(format(), err)
 				return err
 			}
-			return output.Write(format, out)
+			return output.Write(format(), out)
 		},
 	}
 	errorsCmd.Flags().Uint64Var(&errSince, "since", 0, "Only entries with id greater than this")
@@ -517,10 +523,10 @@ func NewCommand() *cobra.Command {
 			}
 			out, err := c.Exec("debugger_info", nil)
 			if err != nil {
-				output.ErrorJSON(format, err)
+				output.ErrorJSON(format(), err)
 				return err
 			}
-			return output.Write(format, out)
+			return output.Write(format(), out)
 		},
 	})
 	debuggerCmd.AddCommand(&cobra.Command{
@@ -533,10 +539,10 @@ func NewCommand() *cobra.Command {
 			}
 			out, err := c.Exec("debugger_status", nil)
 			if err != nil {
-				output.ErrorJSON(format, err)
+				output.ErrorJSON(format(), err)
 				return err
 			}
-			return output.Write(format, out)
+			return output.Write(format(), out)
 		},
 	})
 	debuggerCmd.AddCommand(&cobra.Command{
@@ -549,10 +555,10 @@ func NewCommand() *cobra.Command {
 			}
 			out, err := c.Exec("debugger_stack", nil)
 			if err != nil {
-				output.ErrorJSON(format, err)
+				output.ErrorJSON(format(), err)
 				return err
 			}
-			return output.Write(format, out)
+			return output.Write(format(), out)
 		},
 	})
 	debuggerCmd.AddCommand(&cobra.Command{
@@ -565,10 +571,10 @@ func NewCommand() *cobra.Command {
 			}
 			out, err := c.Exec("debugger_list_breakpoints", nil)
 			if err != nil {
-				output.ErrorJSON(format, err)
+				output.ErrorJSON(format(), err)
 				return err
 			}
-			return output.Write(format, out)
+			return output.Write(format(), out)
 		},
 	})
 	debuggerCmd.AddCommand(&cobra.Command{
@@ -581,10 +587,10 @@ func NewCommand() *cobra.Command {
 			}
 			out, err := c.Exec("debugger_error_breaks", nil)
 			if err != nil {
-				output.ErrorJSON(format, err)
+				output.ErrorJSON(format(), err)
 				return err
 			}
-			return output.Write(format, out)
+			return output.Write(format(), out)
 		},
 	})
 	var clearErrors, clearErrorBreaks, clearLogs bool
@@ -613,10 +619,10 @@ func NewCommand() *cobra.Command {
 			}
 			out, err := c.Exec("debugger_clear", argsMap)
 			if err != nil {
-				output.ErrorJSON(format, err)
+				output.ErrorJSON(format(), err)
 				return err
 			}
-			return output.Write(format, out)
+			return output.Write(format(), out)
 		},
 	}
 	clearCmd.Flags().BoolVar(&clearErrors, "errors", true, "Clear Errors tab")
@@ -634,10 +640,10 @@ func NewCommand() *cobra.Command {
 			}
 			out, err := c.Exec("get_failed_run", nil)
 			if err != nil {
-				output.ErrorJSON(format, err)
+				output.ErrorJSON(format(), err)
 				return err
 			}
-			return output.Write(format, out)
+			return output.Write(format(), out)
 		},
 	}
 
@@ -674,18 +680,18 @@ func NewCommand() *cobra.Command {
 			}
 			out, err := c.Exec("autowork_run", argMap)
 			if err != nil {
-				output.ErrorJSON(format, err)
+				output.ErrorJSON(format(), err)
 				return err
 			}
 			if awWait {
 				results, err := c.WaitAutowork(awWaitTimeout)
 				if err != nil {
-					output.ErrorJSON(format, err)
+					output.ErrorJSON(format(), err)
 					return err
 				}
-				return output.Write(format, results)
+				return output.Write(format(), results)
 			}
-			return output.Write(format, out)
+			return output.Write(format(), out)
 		},
 	}
 	awRunCmd.Flags().StringVar(&awDir, "dir", "", "Test directory (res://...)")
@@ -706,10 +712,10 @@ func NewCommand() *cobra.Command {
 			}
 			out, err := c.Exec("autowork_status", nil)
 			if err != nil {
-				output.ErrorJSON(format, err)
+				output.ErrorJSON(format(), err)
 				return err
 			}
-			return output.Write(format, out)
+			return output.Write(format(), out)
 		},
 	})
 	autoworkCmd.AddCommand(&cobra.Command{
@@ -722,14 +728,101 @@ func NewCommand() *cobra.Command {
 			}
 			out, err := c.Exec("autowork_results", nil)
 			if err != nil {
-				output.ErrorJSON(format, err)
+				output.ErrorJSON(format(), err)
 				return err
 			}
-			return output.Write(format, out)
+			return output.Write(format(), out)
 		},
 	})
 
-	remoteCmd.AddCommand(statusCmd, listCmd, execCmd, evalCmd, evalGDCmd, evalLuaCmd, configCmd, instancesCmd, enableCmd, doctorCmd, logsCmd, errorsCmd, debuggerCmd, failedRunCmd, autoworkCmd)
+	var snapshotOutput string
+	snapshotCmd := &cobra.Command{
+		Use:   "snapshot <editor|scene>",
+		Short: "Capture an editor or playing-scene PNG snapshot",
+		Long:  "Calls remote exec snapshot_editor / snapshot_scene, writes PNG locally, and prints metadata (omits png_base64 by default).",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			target := strings.ToLower(strings.TrimSpace(args[0]))
+			command := ""
+			switch target {
+			case "editor":
+				command = "snapshot_editor"
+			case "scene", "play", "game":
+				command = "snapshot_scene"
+				target = "scene"
+			default:
+				return fmt.Errorf("target must be editor or scene (got %q)", args[0])
+			}
+
+			c, err := clientFrom(cmd)
+			if err != nil {
+				output.ErrorJSON(format(), err)
+				return err
+			}
+			out, err := c.Exec(command, nil)
+			if err != nil {
+				output.ErrorJSON(format(), err)
+				return err
+			}
+			if ok, _ := out["ok"].(bool); !ok {
+				msg, _ := out["error"].(string)
+				if msg == "" {
+					msg = "snapshot failed"
+				}
+				err := fmt.Errorf("%s", msg)
+				output.ErrorJSON(format(), err)
+				return err
+			}
+
+			b64, _ := out["png_base64"].(string)
+			if strings.TrimSpace(b64) == "" {
+				err := fmt.Errorf("snapshot response missing png_base64")
+				output.ErrorJSON(format(), err)
+				return err
+			}
+			png, err := base64.StdEncoding.DecodeString(b64)
+			if err != nil {
+				err = fmt.Errorf("decode png_base64: %w", err)
+				output.ErrorJSON(format(), err)
+				return err
+			}
+
+			outPath := strings.TrimSpace(snapshotOutput)
+			if outPath == "" {
+				ts := time.Now().Format("20060102_150405")
+				outPath = fmt.Sprintf("snapshot_%s_%s.png", target, ts)
+			}
+			if err := os.WriteFile(outPath, png, 0o644); err != nil {
+				err = fmt.Errorf("write %s: %w", outPath, err)
+				output.ErrorJSON(format(), err)
+				return err
+			}
+			abs, _ := filepath.Abs(outPath)
+
+			meta := map[string]any{
+				"ok":     true,
+				"path":   abs,
+				"target": target,
+				"width":  out["width"],
+				"height": out["height"],
+				"source": out["source"],
+				"mime":   out["mime"],
+			}
+			if v, ok := out["playing"]; ok {
+				meta["playing"] = v
+			}
+			if v, ok := out["paused"]; ok {
+				meta["paused"] = v
+			}
+			if v, ok := out["scene"]; ok {
+				meta["scene"] = v
+			}
+			return output.Write(format(), meta)
+		},
+	}
+	snapshotCmd.Flags().StringVarP(&snapshotOutput, "output", "o", "", "Local PNG output path (default snapshot_<target>_<timestamp>.png)")
+
+	remoteCmd.AddCommand(statusCmd, listCmd, execCmd, evalCmd, evalGDCmd, evalLuaCmd, configCmd, instancesCmd, enableCmd, doctorCmd, logsCmd, errorsCmd, debuggerCmd, failedRunCmd, autoworkCmd, snapshotCmd)
 	return remoteCmd
 }
 

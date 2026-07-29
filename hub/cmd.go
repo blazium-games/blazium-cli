@@ -7,6 +7,7 @@ import (
 
 	"github.com/blazium-games/blazium-cli/cdn"
 	"github.com/blazium-games/blazium-cli/editorinstall"
+	"github.com/blazium-games/blazium-cli/exporttemplates"
 	"github.com/blazium-games/blazium-cli/output"
 
 	"github.com/spf13/cobra"
@@ -115,17 +116,10 @@ Use --templates to also download and install export templates.`,
 			}
 
 			if withTpl {
-				tplURL := cdn.TemplatesTPZURL(baseVersion, mono, isNightly)
-				tplPath := filepath.Join(os.TempDir(), filepath.Base(tplURL))
-				fmt.Fprintf(os.Stderr, "Downloading templates %s\n", tplURL)
-				if err := cdn.DownloadFile(tplURL, tplPath); err != nil {
-					return fmt.Errorf("templates: %w", err)
-				}
-				defer os.Remove(tplPath)
 				tplDest := editorinstall.DefaultTemplatesDest()
-				installed, err := editorinstall.InstallTemplatesFromTPZ(tplPath, tplDest)
+				installed, err := exporttemplates.InstallTPZ(baseVersion, mono, isNightly, tplDest)
 				if err != nil {
-					return err
+					return fmt.Errorf("templates: %w", err)
 				}
 				fmt.Fprintf(os.Stderr, "Templates installed to %s/%s\n", tplDest, installed)
 			}
@@ -534,5 +528,6 @@ after remote_control is ready.`,
 		},
 	}
 
+	addTemplatesCommands(root, opts, format)
 	root.AddCommand(installCmd, uninstallCmd, installPathCmd, editorsCmd, projectsCmd, openCmd, loadCmd)
 }

@@ -2,7 +2,6 @@ package main
 
 import (
 	_ "embed"
-	"fmt"
 	"os"
 	"strings"
 
@@ -23,6 +22,7 @@ var DEFAULTBUILD string
 func main() {
 	var format string
 	var quiet bool
+	var jsonFlag bool
 	version := strings.TrimSpace(CLIBUILD)
 
 	rootCmd := &cobra.Command{
@@ -32,7 +32,10 @@ func main() {
 		Long: `Command-line interface for Blazium editors and projects.
 
 Hub commands:
-  install, uninstall, editors, install-path, open, load, projects, upgrade
+  install, uninstall, editors, install-path, templates, open, load, projects, upgrade
+
+Templates:
+  templates list|download|path  (individual files, platform sets, runtime, full .tpz)
 
 Remote control (running editor):
   remote status|list|exec|eval|logs|debugger|failed-run|autowork|instances|config|enable|doctor
@@ -40,8 +43,15 @@ Remote control (running editor):
 Configuration:
   Editors/projects: %APPDATA%\blazium\hub.json (Windows) or ~/.config/blazium/hub.json
   CLI prefs:        %APPDATA%\blazium\cli.json / ~/.config/blazium/cli.json`,
-		SilenceUsage: true,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			output.ResetErrorWritten()
+			resolved, jsonQuiet := output.ResolveFormat(format, jsonFlag)
+			format = resolved
+			if jsonQuiet {
+				quiet = true
+			}
 			output.Quiet = quiet
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -49,6 +59,7 @@ Configuration:
 		},
 	}
 	rootCmd.PersistentFlags().StringVar(&format, "format", "human", "Output format: human, json, or tsv")
+	rootCmd.PersistentFlags().BoolVar(&jsonFlag, "json", false, "Emit JSON on stdout (shorthand for --format json; implies --quiet)")
 	rootCmd.PersistentFlags().BoolVar(&quiet, "quiet", false, "Suppress warnings and non-fatal notices")
 
 	hub.AddCommands(rootCmd, hub.Options{
@@ -60,10 +71,15 @@ Configuration:
 		CurrentVersion: version,
 		Format:         &format,
 	}))
-	rootCmd.AddCommand(remote.NewCommand())
+	rootCmd.AddCommand(remote.NewCommand(remote.Options{
+		Format: &format,
+		Quiet:  &quiet,
+	}))
 
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		if !output.ErrorWritten() {
+			output.ErrorJSON(format, err)
+		}
 		os.Exit(1)
 	}
 }

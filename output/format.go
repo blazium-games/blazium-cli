@@ -7,6 +7,18 @@ import (
 	"strings"
 )
 
+// ResolveFormat applies --json over --format. When jsonFlag is true, returns
+// format "json" and quiet=true; otherwise returns format unchanged and quiet=false.
+func ResolveFormat(format string, jsonFlag bool) (resolved string, quiet bool) {
+	if jsonFlag {
+		return "json", true
+	}
+	if strings.TrimSpace(format) == "" {
+		return "human", false
+	}
+	return format, false
+}
+
 // Write encodes data in human, json, or tsv form to stdout.
 func Write(format string, data any) error {
 	switch strings.ToLower(strings.TrimSpace(format)) {
@@ -93,8 +105,22 @@ func sortedKeys(m map[string]any) []string {
 	return keys
 }
 
+// errorWritten is true after ErrorJSON writes to stderr (avoids double-print in main).
+var errorWritten bool
+
+// ResetErrorWritten clears the ErrorJSON written flag (call from root PersistentPreRun).
+func ResetErrorWritten() {
+	errorWritten = false
+}
+
+// ErrorWritten reports whether ErrorJSON already wrote an error for this command.
+func ErrorWritten() bool {
+	return errorWritten
+}
+
 // ErrorJSON writes {"error":"..."} to stderr when format is json.
 func ErrorJSON(format string, err error) {
+	errorWritten = true
 	if strings.EqualFold(format, "json") {
 		fmt.Fprintf(os.Stderr, "{\"error\":%q}\n", err.Error())
 		return
