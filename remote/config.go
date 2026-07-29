@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // CLIFile is the persisted blazium-cli configuration document.
@@ -14,9 +15,40 @@ type CLIFile struct {
 	Remote RemoteConfig `json:"remote"`
 }
 
-// RemoteConfig holds remote_control-related CLI preferences.
+// RemoteConfig holds remote_control-related CLI preferences and instance registry.
 type RemoteConfig struct {
-	EvalDefault string `json:"eval_default"`
+	EvalDefault     string           `json:"eval_default,omitempty"`
+	EnableOnOpen    *bool            `json:"enable_on_open,omitempty"`     // nil => true
+	EnableMCPOnLoad *bool            `json:"enable_mcp_on_load,omitempty"` // nil => true when project has justamcp keys
+	Instances       []RemoteInstance `json:"instances,omitempty"`
+	Closed          []ClosedInstance `json:"closed,omitempty"`
+}
+
+// RemoteInstance is an active editor with remote_control endpoints.
+type RemoteInstance struct {
+	ID            string    `json:"id"`
+	ProjectPath   string    `json:"project_path"`
+	ProjectName   string    `json:"project_name,omitempty"`
+	Host          string    `json:"host"`
+	RemotePort    int       `json:"remote_port"`
+	RemoteToken   string    `json:"remote_token"`
+	MCPPort       int       `json:"mcp_port,omitempty"`
+	MCPEnabled    bool      `json:"mcp_enabled"`
+	PID           int       `json:"pid"`
+	Bound         bool      `json:"bound"`
+	EditorPath    string    `json:"editor_path,omitempty"`
+	EditorVersion string    `json:"editor_version,omitempty"`
+	StartedAt     time.Time `json:"started_at"`
+}
+
+// ClosedInstance is a retired instance history record (not matchable).
+type ClosedInstance struct {
+	ProjectPath string    `json:"project_path"`
+	PID         int       `json:"pid"`
+	RemotePort  int       `json:"remote_port,omitempty"`
+	RetiredID   string    `json:"retired_id,omitempty"`
+	Reason      string    `json:"reason"`
+	EndedAt     time.Time `json:"ended_at"`
 }
 
 const (
@@ -93,6 +125,43 @@ func SaveCLIFile(cfg CLIFile) error {
 	return os.WriteFile(path, data, 0o644)
 }
 
+// EnableOnOpen reports whether open/load should enable remote_control (default true).
+func EnableOnOpen(cfg CLIFile) bool {
+	if cfg.Remote.EnableOnOpen == nil {
+		return true
+	}
+	return *cfg.Remote.EnableOnOpen
+}
+
+// SetEnableOnOpen persists remote.enable_on_open.
+func SetEnableOnOpen(enabled bool) error {
+	cfg, err := LoadCLIFile()
+	if err != nil {
+		return err
+	}
+	cfg.Remote.EnableOnOpen = &enabled
+	return SaveCLIFile(cfg)
+}
+
+// EnableMCPOnLoad reports whether load should enable JustAMCP when the project has justamcp keys.
+// Default true when unset.
+func EnableMCPOnLoad(cfg CLIFile) bool {
+	if cfg.Remote.EnableMCPOnLoad == nil {
+		return true
+	}
+	return *cfg.Remote.EnableMCPOnLoad
+}
+
+// SetEnableMCPOnLoad persists remote.enable_mcp_on_load.
+func SetEnableMCPOnLoad(enabled bool) error {
+	cfg, err := LoadCLIFile()
+	if err != nil {
+		return err
+	}
+	cfg.Remote.EnableMCPOnLoad = &enabled
+	return SaveCLIFile(cfg)
+}
+
 // EvalDefault resolves bare `remote eval` language: env → file → gdscript.
 func EvalDefault() (string, error) {
 	if env := strings.TrimSpace(os.Getenv("BLAZIUM_REMOTE_EVAL_DEFAULT")); env != "" {
@@ -123,4 +192,49 @@ func SetEvalDefault(lang string) (string, error) {
 		return "", err
 	}
 	return normalized, nil
+}
+
+// PruneDeadInstances retires dead/unresponsive instances and saves if changed.
+// healthCheck, when non-nil, is called for PID-alive instances; false means unresponsive.
+func PruneDeadInstances(healthCheck func(RemoteInstance) bool) (CLIFile, int, error) {
+	cfg, err := LoadCLIFile()
+	if err != nil {
+		return cfg, 0, err
+	}
+	retired := 0
+	var closed []ClosedInstance
+	alive := make([]RemoteInstance, 0, len(cfg.Remote.Instances))
+	for _, inst := range cfg.Remote.Instances {
+		reason := ""
+		if !IsProcessAlive(inst.PID) {
+			reason = "exited"
+		} else if healthCheck != nil && !healthCheck(inst) {
+			reason = "crashed_or_unresponsive"
+		}
+		if reason != "" {
+			closed = append(closed, ClosedInstance{
+				ProjectPath: inst.ProjectPath,
+				PID:         inst.PID,
+				RemotePort:  inst.RemotePort,
+				RetiredID:   inst.ID,
+				Reason:      reason,
+				EndedAt:     time.Now().UTC(),
+			})
+			retired++
+			continue
+		}
+		alive = append(alive, inst)
+	}
+	if retired == 0 {
+		return cfg, 0, nil
+	}
+	cfg.Remote.Instances = alive
+	cfg.Remote.Closed = append(closed, cfg.Remote.Closed...)
+	if len(cfg.Remote.Closed) > maxClosedHistory {
+		cfg.Remote.Closed = cfg.Remote.Closed[:maxClosedHistory]
+	}
+	if err := SaveCLIFile(cfg); err != nil {
+		return cfg, retired, err
+	}
+	return cfg, retired, nil
 }

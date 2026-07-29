@@ -64,19 +64,6 @@ func (f *File) SetDefaultEditor(version string) error {
 	return nil
 }
 
-// ResolveDefault returns the default editor entry.
-func (f *File) ResolveDefault() (*Editor, error) {
-	if f.DefaultEditor != "" {
-		if ed := f.FindEditor(f.DefaultEditor); ed != nil {
-			return ed, nil
-		}
-	}
-	if len(f.Editors) == 0 {
-		return nil, fmt.Errorf("no editors installed; run blazium-cli install <version>")
-	}
-	return &f.Editors[0], nil
-}
-
 // AddEditorFromPath registers an existing binary/dir.
 func (f *File) AddEditorFromPath(path, version, platform, arch string, mono bool) (Editor, error) {
 	abs, err := filepath.Abs(path)
@@ -112,11 +99,9 @@ func (f *File) AddEditorFromPath(path, version, platform, arch string, mono bool
 		Platform: platform,
 		Arch:     arch,
 		Mono:     mono,
+		Channel:  InferChannel(version, false),
 	}
 	f.UpsertEditor(ed)
-	if f.DefaultEditor == "" {
-		f.DefaultEditor = version
-	}
 	return ed, nil
 }
 

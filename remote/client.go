@@ -171,3 +171,47 @@ func Discover(host string, startPort, endPort int, token string, timeout time.Du
 	}
 	return found
 }
+
+// WaitForHealth polls GET /v1/health until success or timeout.
+func (c *Client) WaitForHealth(timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	var last error
+	for time.Now().Before(deadline) {
+		_, err := c.Health()
+		if err == nil {
+			return nil
+		}
+		last = err
+		time.Sleep(400 * time.Millisecond)
+	}
+	if last == nil {
+		last = fmt.Errorf("timeout")
+	}
+	return fmt.Errorf("health check failed: %w", last)
+}
+
+// SetInstanceID calls POST /v1/instance.
+func (c *Client) SetInstanceID(id string) error {
+	out, _, err := c.do(http.MethodPost, "/v1/instance", map[string]any{
+		"instance_id": id,
+	})
+	if err != nil {
+		return err
+	}
+	if ok, exists := out["ok"].(bool); exists && !ok {
+		return fmt.Errorf("%v", out["error"])
+	}
+	return nil
+}
+
+// ConfigFromInstance builds a client Config from a registry entry.
+func ConfigFromInstance(inst RemoteInstance, timeout time.Duration) Config {
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	host := inst.Host
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	return Config{Host: host, Port: inst.RemotePort, Token: inst.RemoteToken, Timeout: timeout}
+}

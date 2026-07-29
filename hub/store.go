@@ -12,10 +12,12 @@ import (
 
 // File is the persisted hub.json document (editors + projects registry).
 type File struct {
-	InstallPath   string    `json:"install_path"`
-	DefaultEditor string    `json:"default_editor"`
-	Editors       []Editor  `json:"editors"`
-	Projects      []Project `json:"projects"`
+	InstallPath          string    `json:"install_path"`
+	DefaultEditor        string    `json:"default_editor,omitempty"`
+	DefaultEditorChannel string    `json:"default_editor_channel,omitempty"` // release|prerelease|nightly
+	DefaultEditorVersion string    `json:"default_editor_version,omitempty"` // latest or concrete
+	Editors              []Editor  `json:"editors"`
+	Projects             []Project `json:"projects"`
 }
 
 // Editor is a registered Blazium editor install.
@@ -26,6 +28,7 @@ type Editor struct {
 	Platform string `json:"platform"`
 	Arch     string `json:"arch"`
 	Mono     bool   `json:"mono"`
+	Channel  string `json:"channel,omitempty"` // release|prerelease|nightly
 }
 
 // Project is a registered local project.

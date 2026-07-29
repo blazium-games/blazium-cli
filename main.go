@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"blazium-cli/hub"
+	"blazium-cli/output"
 	"blazium-cli/remote"
 	"blazium-cli/upgrade"
 
@@ -21,6 +22,7 @@ var DEFAULTBUILD string
 
 func main() {
 	var format string
+	var quiet bool
 	version := strings.TrimSpace(CLIBUILD)
 
 	rootCmd := &cobra.Command{
@@ -30,24 +32,29 @@ func main() {
 		Long: `Command-line interface for Blazium editors and projects.
 
 Hub commands:
-  install, uninstall, editors, install-path, open, projects, upgrade
+  install, uninstall, editors, install-path, open, load, projects, upgrade
 
 Remote control (running editor):
-  remote status|list|exec|eval|eval-gdscript|eval-lua|config|enable|doctor
+  remote status|list|exec|eval|instances|config|enable|doctor
 
 Configuration:
   Editors/projects: %APPDATA%\blazium\hub.json (Windows) or ~/.config/blazium/hub.json
   CLI prefs:        %APPDATA%\blazium\cli.json / ~/.config/blazium/cli.json`,
 		SilenceUsage: true,
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			output.Quiet = quiet
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
 	}
 	rootCmd.PersistentFlags().StringVar(&format, "format", "human", "Output format: human, json, or tsv")
+	rootCmd.PersistentFlags().BoolVar(&quiet, "quiet", false, "Suppress warnings and non-fatal notices")
 
 	hub.AddCommands(rootCmd, hub.Options{
 		DefaultRelease: strings.TrimSpace(DEFAULTBUILD),
 		Format:         &format,
+		Quiet:          &quiet,
 	})
 	rootCmd.AddCommand(upgrade.NewCommand(upgrade.Options{
 		CurrentVersion: version,

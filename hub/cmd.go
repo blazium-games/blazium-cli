@@ -3,9 +3,7 @@ package hub
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"blazium-cli/cdn"
 	"blazium-cli/editorinstall"
@@ -18,6 +16,7 @@ import (
 type Options struct {
 	DefaultRelease string
 	Format         *string
+	Quiet          *bool
 }
 
 // AddCommands registers install, uninstall, editors, install-path, open, projects on root.
@@ -27,6 +26,9 @@ func AddCommands(root *cobra.Command, opts Options) {
 			return *opts.Format
 		}
 		return "human"
+	}
+	quiet := func() bool {
+		return opts.Quiet != nil && *opts.Quiet
 	}
 
 	var (
@@ -105,11 +107,9 @@ Use --templates to also download and install export templates.`,
 				Platform: platform,
 				Arch:     arch,
 				Mono:     mono,
+				Channel:  InferChannel(baseVersion, isNightly),
 			}
 			f.UpsertEditor(ed)
-			if f.DefaultEditor == "" || len(f.Editors) == 1 {
-				f.DefaultEditor = baseVersion
-			}
 			if err := Save(f); err != nil {
 				return err
 			}
@@ -130,12 +130,18 @@ Use --templates to also download and install export templates.`,
 				fmt.Fprintf(os.Stderr, "Templates installed to %s/%s\n", tplDest, installed)
 			}
 
+			resolved, _ := f.ResolveDefault()
+			resolvedVer := ""
+			if resolved != nil {
+				resolvedVer = resolved.Version
+			}
 			return output.Write(format(), map[string]any{
 				"ok":       true,
 				"version":  ed.Version,
+				"channel":  ed.Channel,
 				"path":     ed.Path,
 				"dir":      ed.Dir,
-				"default":  f.DefaultEditor,
+				"default":  resolvedVer,
 				"platform": ed.Platform,
 				"arch":     ed.Arch,
 			})
@@ -227,21 +233,30 @@ Use --templates to also download and install export templates.`,
 				return err
 			}
 			rows := make([]any, 0, len(f.Editors))
+			resolved, _ := f.ResolveDefault()
+			resolvedVer := ""
+			if resolved != nil {
+				resolvedVer = resolved.Version
+			}
 			for _, ed := range f.Editors {
 				rows = append(rows, map[string]any{
 					"version":  ed.Version,
+					"channel":  ed.EditorChannel(),
 					"path":     ed.Path,
 					"dir":      ed.Dir,
 					"platform": ed.Platform,
 					"arch":     ed.Arch,
 					"mono":     ed.Mono,
-					"default":  ed.Version == f.DefaultEditor,
+					"default":  resolved != nil && ed.Version == resolved.Version,
 				})
 			}
 			return output.Write(format(), map[string]any{
-				"default_editor": f.DefaultEditor,
-				"install_path":   f.InstallPath,
-				"editors":        rows,
+				"default_editor":         f.DefaultEditor,
+				"default_editor_channel": f.EffectiveEditorChannel(),
+				"default_editor_version": f.EffectiveEditorVersionPolicy(),
+				"resolved_default":       resolvedVer,
+				"install_path":           f.InstallPath,
+				"editors":                rows,
 			})
 		},
 	}
@@ -279,31 +294,64 @@ Use --templates to also download and install export templates.`,
 	editorsAdd.Flags().StringVar(&addArch, "arch", "", "Architecture label")
 	editorsAdd.Flags().BoolVar(&addMono, "mono", false, "Mono variant")
 
+	var defChannel, defVersion string
 	editorsDefault := &cobra.Command{
 		Use:   "default [version]",
-		Short: "Get or set the default editor version",
-		Args:  cobra.MaximumNArgs(1),
+		Short: "Get or set the default editor (channel + latest/concrete version)",
+		Long: `Without flags, prints the resolved default editor.
+
+Set policy with --channel release|prerelease|nightly and/or --version latest|<ver>.
+Passing a positional version hard-pins that installed editor (overrides channel policy).
+Unset policy defaults to latest release.`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			f, err := Load()
 			if err != nil {
 				return err
 			}
-			if len(args) == 0 {
+			if len(args) == 0 && defChannel == "" && defVersion == "" {
 				ed, err := f.ResolveDefault()
 				if err != nil {
 					return err
 				}
-				return output.Write(format(), map[string]any{"default_editor": ed.Version, "path": ed.Path})
+				return output.Write(format(), map[string]any{
+					"default_editor_pin":     f.DefaultEditor,
+					"default_editor_channel": f.EffectiveEditorChannel(),
+					"default_editor_version": f.EffectiveEditorVersionPolicy(),
+					"resolved":               ed.Version,
+					"path":                   ed.Path,
+					"channel":                ed.EditorChannel(),
+				})
 			}
-			if err := f.SetDefaultEditor(args[0]); err != nil {
-				return err
+			if defChannel != "" || defVersion != "" {
+				if err := f.SetDefaultEditorPolicy(defChannel, defVersion); err != nil {
+					return err
+				}
+			}
+			if len(args) == 1 {
+				if err := f.SetDefaultEditor(args[0]); err != nil {
+					return err
+				}
 			}
 			if err := Save(f); err != nil {
 				return err
 			}
-			return output.Write(format(), map[string]any{"ok": true, "default_editor": f.DefaultEditor})
+			ed, err := f.ResolveDefault()
+			if err != nil {
+				return err
+			}
+			return output.Write(format(), map[string]any{
+				"ok":                     true,
+				"default_editor_pin":     f.DefaultEditor,
+				"default_editor_channel": f.EffectiveEditorChannel(),
+				"default_editor_version": f.EffectiveEditorVersionPolicy(),
+				"resolved":               ed.Version,
+				"path":                   ed.Path,
+			})
 		},
 	}
+	editorsDefault.Flags().StringVar(&defChannel, "channel", "", "Default channel: release, prerelease, or nightly")
+	editorsDefault.Flags().StringVar(&defVersion, "version", "", "Version policy: latest or a concrete version")
 
 	editorsPath := &cobra.Command{
 		Use:   "path <version>",
@@ -387,66 +435,104 @@ Use --templates to also download and install export templates.`,
 	}
 	projectsCmd.AddCommand(projectsAdd, projectsRemove)
 
+	runLaunch := func(projectArg string, fullProfile bool) error {
+		f, err := Load()
+		if err != nil {
+			return err
+		}
+		projectPath, err := f.ResolveProjectPath(projectArg)
+		if err != nil {
+			return err
+		}
+		profile, err := LoadProjectProfile(projectPath)
+		if err != nil {
+			return err
+		}
+		ed, reason, err := f.ResolveEditorForProject(projectPath)
+		if err != nil {
+			return err
+		}
+		if err := f.TouchProjectLastOpened(projectPath); err != nil {
+			return err
+		}
+		if err := Save(f); err != nil {
+			return err
+		}
+		result, err := LaunchEditor(LaunchOptions{
+			EditorPath:    ed.Path,
+			EditorVersion: ed.Version,
+			ProjectPath:   projectPath,
+			Profile:       profile,
+			Quiet:         quiet(),
+		})
+		if err != nil {
+			return err
+		}
+		out := map[string]any{
+			"ok":             true,
+			"project":        projectPath,
+			"editor":         ed.Version,
+			"editor_path":    ed.Path,
+			"resolve_reason": reason,
+			"pid":            result.Instance.PID,
+		}
+		if result.RemoteEnabled {
+			out["instance_id"] = result.Instance.ID
+			out["remote_control"] = map[string]any{
+				"host":  result.Instance.Host,
+				"port":  result.Instance.RemotePort,
+				"token": result.Instance.RemoteToken,
+				"bound": result.Instance.Bound,
+			}
+		}
+		if result.MCPEnabled {
+			out["justamcp"] = map[string]any{
+				"enabled": true,
+				"port":    result.Instance.MCPPort,
+			}
+		}
+		if fullProfile {
+			out["profile"] = map[string]any{
+				"name":            profile.Name,
+				"features":        profile.Features,
+				"editor_version":  profile.EditorVersion,
+				"justamcp":        profile.JustAMCP,
+				"remote_control":  profile.RemoteControl,
+			}
+		}
+		return output.Write(format(), out)
+	}
+
 	openCmd := &cobra.Command{
 		Use:   "open <project-path-or-name>",
 		Short: "Open a project in the resolved Blazium editor",
-		Long: `Launches the editor with --path <project>.
+		Long: `Launches the editor with remote_control enabled by default (unique port/token/instance id).
 
 Editor resolution order:
   1. blazium/editor_version in project.godot
   2. Matching installed editor for config/features
-  3. Default editor from hub.json`,
+  3. Default editor policy from hub.json (latest release unless configured)`,
 		Example: `  blazium-cli open ./MyProject
   blazium-cli open MyGame`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			f, err := Load()
-			if err != nil {
-				return err
-			}
-			projectPath, err := f.ResolveProjectPath(args[0])
-			if err != nil {
-				return err
-			}
-			ed, reason, err := f.ResolveEditorForProject(projectPath)
-			if err != nil {
-				return err
-			}
-			if err := f.TouchProjectLastOpened(projectPath); err != nil {
-				return err
-			}
-			if err := Save(f); err != nil {
-				return err
-			}
-			if err := launchEditor(ed.Path, projectPath); err != nil {
-				return err
-			}
-			return output.Write(format(), map[string]any{
-				"ok":            true,
-				"project":       projectPath,
-				"editor":        ed.Version,
-				"editor_path":   ed.Path,
-				"resolve_reason": reason,
-			})
+			return runLaunch(args[0], false)
 		},
 	}
 
-	root.AddCommand(installCmd, uninstallCmd, installPathCmd, editorsCmd, projectsCmd, openCmd)
-}
+	loadCmd := &cobra.Command{
+		Use:   "load <project-path-or-name>",
+		Short: "Profile a project (JustAMCP/remote_control/etc.) and launch the editor",
+		Long: `Reads project.godot for JustAMCP, remote_control, and editor settings, then launches
+the same way as open — allocating unique ports/tokens and binding a short instance id
+after remote_control is ready.`,
+		Example: `  blazium-cli load ./MyProject
+  blazium-cli load MyGame --quiet`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runLaunch(args[0], true)
+		},
+	}
 
-func launchEditor(editorPath, projectPath string) error {
-	var cmd *exec.Cmd
-	if strings.HasSuffix(strings.ToLower(editorPath), ".app") {
-		cmd = exec.Command("open", "-a", editorPath, "--args", "--path", projectPath)
-	} else {
-		cmd = exec.Command(editorPath, "--path", projectPath)
-	}
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("launch editor: %w", err)
-	}
-	// Detach: do not wait for the editor process.
-	go func() { _ = cmd.Wait() }()
-	return nil
+	root.AddCommand(installCmd, uninstallCmd, installPathCmd, editorsCmd, projectsCmd, openCmd, loadCmd)
 }
