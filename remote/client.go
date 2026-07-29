@@ -54,8 +54,8 @@ func (c Config) baseURL() string {
 
 // Client talks to the remote_control HTTP API.
 type Client struct {
-	Cfg    Config
-	HTTP   *http.Client
+	Cfg  Config
+	HTTP *http.Client
 }
 
 // NewClient builds an HTTP client for the given config.

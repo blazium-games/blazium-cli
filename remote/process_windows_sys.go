@@ -8,10 +8,10 @@ import (
 )
 
 var (
-	modKernel32                  = syscall.NewLazyDLL("kernel32.dll")
-	procOpenProcess              = modKernel32.NewProc("OpenProcess")
-	procGetExitCodeProcess       = modKernel32.NewProc("GetExitCodeProcess")
-	procCloseHandle              = modKernel32.NewProc("CloseHandle")
+	modKernel32                     = syscall.NewLazyDLL("kernel32.dll")
+	procOpenProcess                 = modKernel32.NewProc("OpenProcess")
+	procGetExitCodeProcess          = modKernel32.NewProc("GetExitCodeProcess")
+	procCloseHandle                 = modKernel32.NewProc("CloseHandle")
 	processQueryLimitedInfo uintptr = 0x1000
 	stillActive             uint32  = 259
 )

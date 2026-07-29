@@ -229,10 +229,10 @@ func filterTemplateMetadata(all []TemplateMetadata, opts templateFilterOptions) 
 }
 
 type templateFilterOptions struct {
-	files     []string
-	platform  string
-	monoOnly  bool
-	skipMono  bool
+	files    []string
+	platform string
+	monoOnly bool
+	skipMono bool
 }
 
 func templateInstallVersion(entries []TemplateMetadata, fallback string) string {
