@@ -1,4 +1,4 @@
-package main
+package editorinstall
 
 import (
 	"archive/zip"
@@ -7,40 +7,12 @@ import (
 	"testing"
 )
 
-func TestCompareSemver(t *testing.T) {
-	if compareSemver("0.6.707", "0.6.705") <= 0 {
-		t.Fatal("0.6.707 should be greater than 0.6.705")
-	}
-	if compareSemver("0.5.421", "0.6.707") >= 0 {
-		t.Fatal("0.5.421 should be less than 0.6.707")
-	}
-}
-
-func TestResolveLatestNightlyMock(t *testing.T) {
-	old := httpGet
-	defer func() { httpGet = old }()
-	httpGet = func(url string) ([]byte, error) {
-		return []byte(`[
-			{"version":"0.6.705"},
-			{"version":"0.6.707"},
-			{"version":"0.5.421"}
-		]`), nil
-	}
-	got, err := ResolveLatestNightly()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != "0.6.707" {
-		t.Fatalf("got %q want 0.6.707", got)
-	}
-}
-
 func TestInstallTemplatesFromTPZ(t *testing.T) {
 	dir := t.TempDir()
 	tpz := filepath.Join(dir, "templates.tpz")
 	destRoot := filepath.Join(dir, "export_templates")
 
-	if err := writeFixtureTPZ(tpz, "0.6.707 stable", map[string][]byte{
+	if err := writeFixtureTPZ(tpz, map[string][]byte{
 		"version.txt":                []byte("0.6.707 stable"),
 		"web_nothreads_release.zip":  []byte("web"),
 		"linux_release.x86_64.zip":   []byte("linux"),
@@ -67,10 +39,10 @@ func TestInstallTemplatesFromTPZ(t *testing.T) {
 	}
 }
 
-func TestInstallEditorFromZip(t *testing.T) {
+func TestInstallEditorTree(t *testing.T) {
 	dir := t.TempDir()
 	zipPath := filepath.Join(dir, "editor.zip")
-	engineDest := filepath.Join(dir, "blazium")
+	destDir := filepath.Join(dir, "0.6.707")
 
 	binDir := filepath.Join(dir, "extract", "Blazium_v0.6.707_linux.x86_64")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
@@ -85,16 +57,40 @@ func TestInstallEditorFromZip(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := InstallEditorFromZip(zipPath, engineDest); err != nil {
+	got, err := InstallEditorTree(zipPath, destDir)
+	if err != nil {
 		t.Fatal(err)
 	}
-	st, err := os.Stat(engineDest)
-	if err != nil || st.Size() == 0 {
-		t.Fatalf("engine not installed: %v", err)
+	if _, err := os.Stat(got); err != nil {
+		t.Fatalf("binary missing: %v", err)
 	}
 }
 
-func writeFixtureTPZ(path, version string, files map[string][]byte) error {
+func TestTemplateShortVersion(t *testing.T) {
+	if got := TemplateShortVersion("0.6.707.stable.custom"); got != "0.6.707.stable.custom" {
+		t.Fatalf("got %q", got)
+	}
+	if got := TemplateShortVersion("0.6.707 stable custom"); got != "0.6.707" {
+		t.Fatalf("got %q want 0.6.707", got)
+	}
+}
+
+func TestInstallTemplateFilesAlias(t *testing.T) {
+	dir := t.TempDir()
+	destRoot := filepath.Join(dir, "export_templates")
+	src := filepath.Join(dir, "linux_release.x86_64.zip")
+	if err := os.WriteFile(src, []byte("linux"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := InstallTemplateFiles(destRoot, "0.6.707 stable (4.3.2.stable.custom_build).abc123", []string{src}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(destRoot, "0.6.707/linux_release.x86_64.zip")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeFixtureTPZ(path string, files map[string][]byte) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
@@ -113,7 +109,6 @@ func writeFixtureTPZ(path, version string, files map[string][]byte) error {
 			return err
 		}
 	}
-	_ = version
 	if err := w.Close(); err != nil {
 		_ = f.Close()
 		return err
@@ -151,28 +146,4 @@ func createZip(zipPath string, src map[string]string) error {
 		return err
 	}
 	return f.Close()
-}
-
-func TestTemplateShortVersion(t *testing.T) {
-	if got := templateShortVersion("0.6.707.stable.custom"); got != "0.6.707.stable.custom" {
-		t.Fatalf("got %q", got)
-	}
-	if got := templateShortVersion("0.6.707 stable custom"); got != "0.6.707" {
-		t.Fatalf("got %q want 0.6.707", got)
-	}
-}
-
-func TestInstallTemplateFilesAlias(t *testing.T) {
-	dir := t.TempDir()
-	destRoot := filepath.Join(dir, "export_templates")
-	src := filepath.Join(dir, "linux_release.x86_64.zip")
-	if err := os.WriteFile(src, []byte("linux"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := InstallTemplateFiles(destRoot, "0.6.707 stable (4.3.2.stable.custom_build).abc123", []string{src}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(destRoot, "0.6.707/linux_release.x86_64.zip")); err != nil {
-		t.Fatal(err)
-	}
 }

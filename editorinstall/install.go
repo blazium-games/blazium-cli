@@ -1,4 +1,4 @@
-package main
+package editorinstall
 
 import (
 	"archive/zip"
@@ -9,7 +9,8 @@ import (
 	"strings"
 )
 
-func defaultTemplatesDest() string {
+// DefaultTemplatesDest returns the export templates root.
+func DefaultTemplatesDest() string {
 	if v := strings.TrimSpace(os.Getenv("BLAZIUM_EXPORT_TEMPLATES_DIR")); v != "" {
 		return v
 	}
@@ -17,7 +18,83 @@ func defaultTemplatesDest() string {
 	if err != nil {
 		return filepath.Join("/root", ".local", "share", "blazium", "export_templates")
 	}
+	if os.PathSeparator == '\\' {
+		local := os.Getenv("LOCALAPPDATA")
+		if local == "" {
+			local = filepath.Join(home, "AppData", "Local")
+		}
+		return filepath.Join(local, "Blazium", "export_templates")
+	}
 	return filepath.Join(home, ".local", "share", "blazium", "export_templates")
+}
+
+// InstallEditorTree extracts an editor zip into destDir and returns the binary path.
+func InstallEditorTree(zipPath, destDir string) (binaryPath string, err error) {
+	if err := os.RemoveAll(destDir); err != nil && !os.IsNotExist(err) {
+		return "", err
+	}
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return "", err
+	}
+	if err := unzipArchive(zipPath, destDir); err != nil {
+		return "", fmt.Errorf("unzip editor: %w", err)
+	}
+	bin, err := FindBinaryInDir(destDir)
+	if err != nil {
+		return "", err
+	}
+	return bin, nil
+}
+
+// FindBinaryInDir locates a Blazium editor binary under root.
+func FindBinaryInDir(root string) (string, error) {
+	var candidates []string
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return err
+		}
+		base := strings.ToLower(filepath.Base(path))
+		if strings.HasSuffix(base, ".dll") || strings.HasSuffix(base, ".pdb") || strings.HasSuffix(base, ".so") {
+			return nil
+		}
+		if strings.HasSuffix(base, ".exe") && strings.Contains(base, "blazium") {
+			candidates = append(candidates, path)
+			return nil
+		}
+		if strings.Contains(base, "blazium") && !strings.Contains(base, ".") {
+			candidates = append(candidates, path)
+			return nil
+		}
+		if strings.HasPrefix(base, "blazium.") || strings.HasPrefix(base, "blaziumeditor") {
+			candidates = append(candidates, path)
+		}
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil || !info.IsDir() {
+			return err
+		}
+		if strings.HasSuffix(strings.ToLower(info.Name()), ".app") && strings.Contains(strings.ToLower(info.Name()), "blazium") {
+			candidates = append(candidates, path)
+		}
+		return nil
+	})
+	if len(candidates) == 0 {
+		return "", fmt.Errorf("no editor binary found in %s", root)
+	}
+	best := candidates[0]
+	for _, c := range candidates[1:] {
+		if strings.HasSuffix(strings.ToLower(c), ".exe") {
+			return c, nil
+		}
+		if strings.Count(filepath.Base(c), ".") < strings.Count(filepath.Base(best), ".") {
+			best = c
+		}
+	}
+	return best, nil
 }
 
 // InstallTemplatesFromTPZ extracts export template zips from a .tpz into destRoot/version/.
@@ -95,6 +172,18 @@ func readTPZVersion(files []*zip.File) (version, contentsPrefix string, err erro
 		return version, dir, nil
 	}
 	return "", "", fmt.Errorf("version.txt not found in tpz")
+}
+
+// TemplateShortVersion returns the version prefix before a space (Godot alias).
+func TemplateShortVersion(version string) string {
+	if idx := strings.Index(version, " "); idx >= 0 {
+		return version[:idx]
+	}
+	return version
+}
+
+func templateShortVersion(version string) string {
+	return TemplateShortVersion(version)
 }
 
 // InstallTemplateFiles copies downloaded template zips into destRoot/engineVersion/.
@@ -215,40 +304,6 @@ func extractZipFile(f *zip.File, dest string) error {
 	return closeErr
 }
 
-// InstallEditorFromZip extracts a Linux editor zip and installs the binary at engineDest.
-func InstallEditorFromZip(zipPath, engineDest string) error {
-	tmpDir, err := os.MkdirTemp("", "blazium-editor-*")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(tmpDir)
-
-	if err := unzipArchive(zipPath, tmpDir); err != nil {
-		return fmt.Errorf("unzip editor: %w", err)
-	}
-	bin, err := findEditorBinary(tmpDir)
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(engineDest), 0o755); err != nil {
-		return err
-	}
-	in, err := os.Open(bin)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	out, err := os.OpenFile(engineDest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(out, in); err != nil {
-		_ = out.Close()
-		return err
-	}
-	return out.Close()
-}
-
 func unzipArchive(zipPath, dest string) error {
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {
@@ -275,40 +330,4 @@ func unzipArchive(zipPath, dest string) error {
 		}
 	}
 	return nil
-}
-
-func findEditorBinary(root string) (string, error) {
-	var candidates []string
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			return err
-		}
-		base := strings.ToLower(filepath.Base(path))
-		if strings.HasSuffix(base, ".dll") || strings.HasSuffix(base, ".pdb") || strings.HasSuffix(base, ".so") {
-			return nil
-		}
-		if strings.Contains(base, "blazium") && !strings.Contains(base, ".") {
-			candidates = append(candidates, path)
-			return nil
-		}
-		if strings.HasPrefix(base, "blazium.") || strings.HasPrefix(base, "blaziumeditor") {
-			if info.Mode()&0o111 != 0 || strings.Contains(base, "linux") || strings.Contains(base, "x86_64") {
-				candidates = append(candidates, path)
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return "", err
-	}
-	if len(candidates) == 0 {
-		return "", fmt.Errorf("no editor binary found in %s", root)
-	}
-	best := candidates[0]
-	for _, c := range candidates[1:] {
-		if strings.Count(filepath.Base(c), ".") < strings.Count(filepath.Base(best), ".") {
-			best = c
-		}
-	}
-	return best, nil
 }
