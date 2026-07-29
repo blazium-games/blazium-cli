@@ -53,15 +53,16 @@ func detailsJSONURL(version string, isNightly bool) string {
 }
 
 func cerebroTemplatesURL(deployType, version string) string {
-	if base := strings.TrimSuffix(strings.TrimSpace(os.Getenv("BLAZIUM_CEREBRO_URL")), "/"); base != "" {
-		return fmt.Sprintf("%s/api/v1/templates/%s/%s", base, deployType, version)
+	// Undocumented internal override for Blazium engineers only (not public SoT).
+	base := strings.TrimSuffix(strings.TrimSpace(os.Getenv("BLAZIUM_CEREBRO_URL")), "/")
+	if base == "" {
+		return ""
 	}
-	// Website may proxy Cerebro public template reads under /api/v1/templates.
-	return fmt.Sprintf("https://blazium.app/api/v1/templates/%s/%s", deployType, version)
+	return fmt.Sprintf("%s/api/v1/templates/%s/%s", base, deployType, version)
 }
 
 func loadTemplateMetadata(version string, isNightly bool) ([]TemplateMetadata, error) {
-	// Prefer per-file manifests for individual downloads; keep bundle/TPZ as fallback.
+	// CDN-only public path: template_files.json → templates.json → details.json.
 	candidates := []string{
 		templateFilesJSONURL(version, isNightly),
 		templatesJSONURL(version, isNightly),
@@ -94,18 +95,17 @@ func loadTemplateMetadata(version string, isNightly bool) ([]TemplateMetadata, e
 		}
 	}
 
-	cerebroEntries, cerebroErr := loadTemplateMetadataFromCerebro(deployTypeName(isNightly), version)
-	if cerebroErr == nil && len(cerebroEntries) > 0 {
-		return cerebroEntries, nil
+	if url := cerebroTemplatesURL(deployTypeName(isNightly), version); url != "" {
+		cerebroEntries, cerebroErr := loadTemplateMetadataFromCerebro(deployTypeName(isNightly), version)
+		if cerebroErr == nil && len(cerebroEntries) > 0 {
+			return cerebroEntries, nil
+		}
+		if cerebroErr != nil {
+			lastErr = fmt.Errorf("internal registry fallback: %w", cerebroErr)
+		}
 	}
 	if len(bundleFallback) > 0 {
 		return bundleFallback, nil
-	}
-	if cerebroErr != nil {
-		if lastErr != nil {
-			return nil, fmt.Errorf("%v; cerebro fallback: %w", lastErr, cerebroErr)
-		}
-		return nil, cerebroErr
 	}
 	if lastErr != nil {
 		return nil, lastErr

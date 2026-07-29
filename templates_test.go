@@ -83,6 +83,7 @@ func TestLoadTemplateMetadataFallsBackToArrayTemplatesJSON(t *testing.T) {
 }
 
 func TestLoadTemplateMetadataCerebroFallback(t *testing.T) {
+	t.Setenv("BLAZIUM_CEREBRO_URL", "https://cerebro.test")
 	old := httpGet
 	defer func() { httpGet = old }()
 	httpGet = func(url string) ([]byte, error) {
@@ -91,7 +92,7 @@ func TestLoadTemplateMetadataCerebroFallback(t *testing.T) {
 			"https://cdn.blazium.app/nightly/0.6.707/templates.json",
 			"https://cdn.blazium.app/nightly/0.6.707/details.json":
 			return nil, errHTTP404
-		case "https://blazium.app/api/v1/templates/nightly/0.6.707":
+		case "https://cerebro.test/api/v1/templates/nightly/0.6.707":
 			return []byte(`{"success":true,"data":[{"filename":"linux_release.x86_64.zip","download_url":"https://cdn.example/linux.zip","platform":"linux","arch":"x86_64"}]}`), nil
 		default:
 			t.Fatalf("unexpected url %s", url)
@@ -104,6 +105,27 @@ func TestLoadTemplateMetadataCerebroFallback(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].Platform != "linux" {
 		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestLoadTemplateMetadataCDNOnlyWithoutCerebroEnv(t *testing.T) {
+	t.Setenv("BLAZIUM_CEREBRO_URL", "")
+	old := httpGet
+	defer func() { httpGet = old }()
+	httpGet = func(url string) ([]byte, error) {
+		switch url {
+		case "https://cdn.blazium.app/nightly/0.6.707/template_files.json",
+			"https://cdn.blazium.app/nightly/0.6.707/templates.json",
+			"https://cdn.blazium.app/nightly/0.6.707/details.json":
+			return nil, errHTTP404
+		default:
+			t.Fatalf("unexpected url %s", url)
+			return nil, errHTTP404
+		}
+	}
+	_, err := loadTemplateMetadata("0.6.707", true)
+	if err == nil {
+		t.Fatal("expected error when CDN catalogs missing")
 	}
 }
 
@@ -127,8 +149,7 @@ func TestLoadTemplateMetadataLegacyBundle(t *testing.T) {
 					"checksum": {"256": "def456"}
 				}
 			}`), nil
-		case "https://cdn.blazium.app/nightly/0.6.707/details.json",
-			"https://blazium.app/api/v1/templates/nightly/0.6.707":
+		case "https://cdn.blazium.app/nightly/0.6.707/details.json":
 			return nil, errHTTP404
 		default:
 			t.Fatalf("unexpected url %s", url)
@@ -153,8 +174,7 @@ func TestLoadTemplateMetadataDetailsJSONFallback(t *testing.T) {
 	httpGet = func(url string) ([]byte, error) {
 		switch url {
 		case "https://cdn.blazium.app/nightly/0.6.744/template_files.json",
-			"https://cdn.blazium.app/nightly/0.6.744/templates.json",
-			"https://blazium.app/api/v1/templates/nightly/0.6.744":
+			"https://cdn.blazium.app/nightly/0.6.744/templates.json":
 			return nil, errHTTP404
 		case "https://cdn.blazium.app/nightly/0.6.744/details.json":
 			return []byte(`{

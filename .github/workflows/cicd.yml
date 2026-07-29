@@ -52,8 +52,13 @@ jobs:
 
       - name: Get highest nightly version
         run: |
-          response=$(curl -s https://blazium.app/api/versions/data/nightly)
-          highest_version=$(echo "$response" | jq -r 'max_by(.version | split(".") | map(tonumber)) | .version' | tr -d '\n\r')
+          set -euo pipefail
+          response=$(curl -fsSL https://cdn.blazium.app/catalog/versions/nightly/latest.json)
+          highest_version=$(echo "$response" | jq -r '.version' | tr -d '\n\r')
+          if [ -z "$highest_version" ] || [ "$highest_version" = "null" ]; then
+            response=$(curl -fsSL https://cdn.blazium.app/catalog/versions/nightly.json)
+            highest_version=$(echo "$response" | jq -r 'max_by(.version | split(".") | map(tonumber)) | .version' | tr -d '\n\r')
+          fi
           echo "$highest_version" > data/defaultEngineBuild.txt
 
       - name: Set up Go
@@ -229,127 +234,18 @@ jobs:
           EOF
           )"
 
-  manifest:
+  # Binaries are uploaded by the build matrix. Cerebro owns cli/cli.json after tool POSTs;
+  # republish once all platforms have registered so the public manifest includes full history.
+  publish-catalog:
     needs: build
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Get Version with Bioblaze/game-semver-action
-        uses: Bioblaze/game-semver-action@v10
-        id: version
-        with:
-          personal_github_token: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: actions/setup-go@v4
-        with:
-          go-version: 1.23.2
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: signed-linux
-          path: artifacts/linux
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: signed-darwin
-          path: artifacts/darwin
-
-      - uses: actions/download-artifact@v4
-        continue-on-error: true
-        id: download_windows
-        with:
-          name: signed-windows
-          path: artifacts/windows
-
-      - name: Download Windows CLI fallback from CDN
-        if: steps.download_windows.outcome != 'success'
+      - name: Republish CLI catalog via Cerebro
         run: |
           set -euo pipefail
-          mkdir -p artifacts/windows
-          MANIFEST="$(curl -fsSL https://cdn.blazium.app/cli/cli.json)"
-          VERSION="${{ steps.version.outputs.simple_version }}"
-          URL="$(echo "$MANIFEST" | jq -r --arg v "$VERSION" '.versions[$v].downloads[] | select(.platform=="windows") | .download_url' | head -n 1)"
-          if [ -z "$URL" ] || [ "$URL" = "null" ]; then
-            URL="$(echo "$MANIFEST" | jq -r '.versions[.latest].downloads[] | select(.platform=="windows") | .download_url' | head -n 1)"
-          fi
-          if [ -z "$URL" ] || [ "$URL" = "null" ]; then
-            echo "Could not resolve a Windows CLI download URL from cli.json." >&2
-            exit 1
-          fi
-          curl -fsSL "$URL" -o artifacts/windows/blazium-cli.exe
-
-      - name: Ensure Windows artifact exists
-        run: |
-          set -euo pipefail
-          test -f artifacts/windows/blazium-cli.exe
-
-      - name: Normalize artifact layout
-        run: |
-          set -euo pipefail
-          normalize_platform() {
-            local platform="$1"
-            local dir="artifacts/${platform}"
-            if [ -d "${dir}/build" ]; then
-              mv "${dir}/build/"* "${dir}/" 2>/dev/null || true
-              rmdir "${dir}/build" 2>/dev/null || true
-            fi
-            if [ -d "${dir}/signed" ]; then
-              mv "${dir}/signed/"* "${dir}/" 2>/dev/null || true
-              rmdir "${dir}/signed" 2>/dev/null || true
-            fi
-            if [ -d "${dir}/blazium-cli.exe" ] && [ -f "${dir}/blazium-cli.exe/blazium-cli.exe" ]; then
-              mv "${dir}/blazium-cli.exe/blazium-cli.exe" "${dir}/blazium-cli.exe.tmp"
-              rm -rf "${dir}/blazium-cli.exe"
-              mv "${dir}/blazium-cli.exe.tmp" "${dir}/blazium-cli.exe"
-            fi
-          }
-          normalize_platform linux
-          normalize_platform darwin
-          normalize_platform windows
-          ls -laR artifacts/
-
-      - name: Download existing manifest
-        continue-on-error: true
-        run: curl -fsSL https://cdn.blazium.app/cli/cli.json -o existing-cli.json
-
-      - name: Generate cli.json
-        env:
-          CEREBRO_MANIFEST: ${{ secrets.CEREBRO_URL }}/api/v1/tools/cli/manifest
-        run: |
-          ARGS=(--version "${{ steps.version.outputs.simple_version }}" --artifacts artifacts --out cli.json)
-          if [ -f existing-cli.json ]; then
-            ARGS+=(--base-manifest existing-cli.json)
-          fi
-          if [ -n "$CEREBRO_MANIFEST" ]; then
-            ARGS+=(--cerebro-manifest "$CEREBRO_MANIFEST")
-          fi
-          go run ./cmd/generate-cli-manifest "${ARGS[@]}"
-
-      - name: Verify cli.json checksums
-        run: |
-          chmod +x scripts/verify-cli-manifest.sh
-          scripts/verify-cli-manifest.sh \
-            --manifest cli.json \
-            --version "${{ steps.version.outputs.simple_version }}" \
-            --artifacts artifacts
-
-      - uses: BetaHuhn/do-spaces-action@v2
-        with:
-          access_key: ${{ secrets.DO_ACCESS_KEY }}
-          secret_key: ${{ secrets.DO_SECRET_KEY }}
-          space_name: ${{ secrets.DO_SPACE_NAME }}
-          space_region: ${{ secrets.DO_SPACE_REGION }}
-          source: cli.json
-          out_dir: cli
-
-      - uses: BetaHuhn/do-spaces-action@v2
-        with:
-          access_key: ${{ secrets.DO_ACCESS_KEY }}
-          secret_key: ${{ secrets.DO_SECRET_KEY }}
-          space_name: ${{ secrets.DO_SPACE_NAME }}
-          space_region: ${{ secrets.DO_SPACE_REGION }}
-          source: cli.json
-          out_dir: cli/${{ steps.version.outputs.simple_version }}
+          curl -fsS -X POST "${{ secrets.CEREBRO_URL }}/api/v1/cdn/publish" \
+            -H "Content-Type: application/json" \
+            -H "BLAZIUM_AUTH: ${{ secrets.BLAZIUM_AUTH }}" \
+            -d '{"scope":"cli"}'
 

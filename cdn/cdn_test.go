@@ -46,11 +46,10 @@ func TestResolveLatestNightlyMock(t *testing.T) {
 	old := HTTPGet
 	defer func() { HTTPGet = old }()
 	HTTPGet = func(url string) ([]byte, error) {
-		return []byte(`[
-			{"version":"0.6.705"},
-			{"version":"0.6.707"},
-			{"version":"0.5.421"}
-		]`), nil
+		if url != "https://cdn.blazium.app/catalog/versions/nightly/latest.json" {
+			t.Fatalf("unexpected url %s", url)
+		}
+		return []byte(`{"version":"0.6.707","channel":"nightly"}`), nil
 	}
 	got, err := ResolveLatestNightly()
 	if err != nil {
@@ -65,7 +64,7 @@ func TestResolveInstallVersionAliases(t *testing.T) {
 	old := HTTPGet
 	defer func() { HTTPGet = old }()
 	HTTPGet = func(url string) ([]byte, error) {
-		return []byte(`[{"version":"0.6.800"}]`), nil
+		return []byte(`{"version":"0.6.800","channel":"nightly"}`), nil
 	}
 	v, night, err := ResolveInstallVersion("nightly", "", "0.6.1")
 	if err != nil || !night || v != "0.6.800" {

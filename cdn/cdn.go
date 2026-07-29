@@ -23,7 +23,7 @@ type EditorMetadata struct {
 	Timestamp   string `json:"timestamp"`
 }
 
-const nightlyVersionsURL = "https://blazium.app/api/versions/data/nightly"
+const cdnPublicBase = "https://cdn.blazium.app"
 
 // HTTPGet is overridable for tests.
 var HTTPGet = func(url string) ([]byte, error) {
@@ -154,23 +154,50 @@ func TemplatesTPZURL(version string, isMono, isNightly bool) string {
 	return fmt.Sprintf("https://cdn.blazium.app/%s/%s/Blazium_v%s%s", releaseType, version, version, suffix)
 }
 
-type nightlyEntry struct {
+type latestPointer struct {
+	Version string `json:"version"`
+	Channel string `json:"channel"`
+}
+
+type flatVersionEntry struct {
 	DeployType string `json:"deploy_type"`
 	Version    string `json:"version"`
 }
 
-// ResolveLatestNightly returns the highest semver from blazium.app nightly API.
-func ResolveLatestNightly() (string, error) {
-	body, err := HTTPGet(nightlyVersionsURL)
-	if err != nil {
-		return "", fmt.Errorf("fetch nightly versions: %w", err)
+// ResolveLatestChannel returns the current version for a channel from CDN latest.json.
+func ResolveLatestChannel(channel string) (string, error) {
+	ch := strings.ToLower(strings.TrimSpace(channel))
+	if ch == "" {
+		ch = "nightly"
 	}
-	var entries []nightlyEntry
+	url := fmt.Sprintf("%s/catalog/versions/%s/latest.json", cdnPublicBase, ch)
+	body, err := HTTPGet(url)
+	if err != nil {
+		return "", fmt.Errorf("fetch %s latest: %w", ch, err)
+	}
+	var ptr latestPointer
+	if err := json.Unmarshal(body, &ptr); err != nil {
+		return "", fmt.Errorf("parse %s latest: %w", ch, err)
+	}
+	if v := strings.TrimSpace(ptr.Version); v != "" {
+		return v, nil
+	}
+	// Fallback: full history catalog.
+	return resolveLatestFromHistory(ch)
+}
+
+func resolveLatestFromHistory(channel string) (string, error) {
+	url := fmt.Sprintf("%s/catalog/versions/%s.json", cdnPublicBase, channel)
+	body, err := HTTPGet(url)
+	if err != nil {
+		return "", fmt.Errorf("fetch %s versions: %w", channel, err)
+	}
+	var entries []flatVersionEntry
 	if err := json.Unmarshal(body, &entries); err != nil {
-		return "", fmt.Errorf("parse nightly versions: %w", err)
+		return "", fmt.Errorf("parse %s versions: %w", channel, err)
 	}
 	if len(entries) == 0 {
-		return "", fmt.Errorf("no nightly versions returned")
+		return "", fmt.Errorf("no %s versions returned", channel)
 	}
 	best := entries[0].Version
 	for _, e := range entries[1:] {
@@ -179,9 +206,14 @@ func ResolveLatestNightly() (string, error) {
 		}
 	}
 	if strings.TrimSpace(best) == "" {
-		return "", fmt.Errorf("empty nightly version")
+		return "", fmt.Errorf("empty %s version", channel)
 	}
 	return best, nil
+}
+
+// ResolveLatestNightly returns the current nightly from CDN.
+func ResolveLatestNightly() (string, error) {
+	return ResolveLatestChannel("nightly")
 }
 
 // CompareSemver compares dotted version strings.
