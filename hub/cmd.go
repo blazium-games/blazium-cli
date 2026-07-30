@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 
 	"github.com/blazium-games/blazium-cli/cdn"
-	"github.com/blazium-games/blazium-cli/editorinstall"
-	"github.com/blazium-games/blazium-cli/exporttemplates"
 	"github.com/blazium-games/blazium-cli/output"
 
 	"github.com/spf13/cobra"
@@ -58,87 +56,19 @@ Use --templates to also download and install export templates.`,
 			if len(args) > 0 {
 				verArg = args[0]
 			}
-			baseVersion, isNightly, err := cdn.ResolveInstallVersion(verArg, channel, opts.DefaultRelease)
-			if err != nil {
-				return err
-			}
-			if platform == "" || arch == "" {
-				dp, da := cdn.DefaultPlatformArch()
-				if platform == "" {
-					platform = dp
-				}
-				if arch == "" {
-					arch = da
-				}
-			}
-			list, err := cdn.LoadEditorMetadata(baseVersion, isNightly)
-			if err != nil {
-				return err
-			}
-			meta, err := cdn.FindEditorMetadata(list, baseVersion, platform, arch, mono)
-			if err != nil {
-				return err
-			}
-
-			f, err := Load()
-			if err != nil {
-				return err
-			}
-			installRoot, err := f.EffectiveInstallPath()
-			if err != nil {
-				return err
-			}
-			destDir := filepath.Join(installRoot, baseVersion)
-			tmpZip := filepath.Join(os.TempDir(), meta.Filename)
-			fmt.Fprintf(os.Stderr, "Downloading %s\n", meta.DownloadURL)
-			if err := cdn.DownloadFile(meta.DownloadURL, tmpZip); err != nil {
-				return err
-			}
-			defer os.Remove(tmpZip)
-
-			fmt.Fprintf(os.Stderr, "Installing to %s\n", destDir)
-			bin, err := editorinstall.InstallEditorTree(tmpZip, destDir)
-			if err != nil {
-				return err
-			}
-			ed := Editor{
-				Version:  baseVersion,
-				Path:     bin,
-				Dir:      destDir,
-				Platform: platform,
-				Arch:     arch,
-				Mono:     mono,
-				Channel:  InferChannel(baseVersion, isNightly),
-			}
-			f.UpsertEditor(ed)
-			if err := Save(f); err != nil {
-				return err
-			}
-
-			if withTpl {
-				tplDest := editorinstall.DefaultTemplatesDest()
-				installed, err := exporttemplates.InstallTPZ(baseVersion, mono, isNightly, tplDest)
-				if err != nil {
-					return fmt.Errorf("templates: %w", err)
-				}
-				fmt.Fprintf(os.Stderr, "Templates installed to %s/%s\n", tplDest, installed)
-			}
-
-			resolved, _ := f.ResolveDefault()
-			resolvedVer := ""
-			if resolved != nil {
-				resolvedVer = resolved.Version
-			}
-			return output.Write(format(), map[string]any{
-				"ok":       true,
-				"version":  ed.Version,
-				"channel":  ed.Channel,
-				"path":     ed.Path,
-				"dir":      ed.Dir,
-				"default":  resolvedVer,
-				"platform": ed.Platform,
-				"arch":     ed.Arch,
+			out, err := RunInstall(InstallParams{
+				VersionArg:     verArg,
+				Channel:        channel,
+				Platform:       platform,
+				Arch:           arch,
+				Mono:           mono,
+				WithTemplates:  withTpl,
+				DefaultRelease: opts.DefaultRelease,
 			})
+			if err != nil {
+				return err
+			}
+			return output.Write(format(), out)
 		},
 	}
 	installCmd.Flags().StringVar(&channel, "channel", "", "Release channel: nightly or release")
@@ -430,69 +360,9 @@ Unset policy defaults to latest release.`,
 	projectsCmd.AddCommand(projectsAdd, projectsRemove)
 
 	runLaunch := func(projectArg string, fullProfile bool) error {
-		f, err := Load()
+		out, err := LaunchProject(projectArg, fullProfile, quiet())
 		if err != nil {
 			return err
-		}
-		projectPath, err := f.ResolveProjectPath(projectArg)
-		if err != nil {
-			return err
-		}
-		profile, err := LoadProjectProfile(projectPath)
-		if err != nil {
-			return err
-		}
-		ed, reason, err := f.ResolveEditorForProject(projectPath)
-		if err != nil {
-			return err
-		}
-		if err := f.TouchProjectLastOpened(projectPath); err != nil {
-			return err
-		}
-		if err := Save(f); err != nil {
-			return err
-		}
-		result, err := LaunchEditor(LaunchOptions{
-			EditorPath:    ed.Path,
-			EditorVersion: ed.Version,
-			ProjectPath:   projectPath,
-			Profile:       profile,
-			Quiet:         quiet(),
-		})
-		if err != nil {
-			return err
-		}
-		out := map[string]any{
-			"ok":             true,
-			"project":        projectPath,
-			"editor":         ed.Version,
-			"editor_path":    ed.Path,
-			"resolve_reason": reason,
-			"pid":            result.Instance.PID,
-		}
-		if result.RemoteEnabled {
-			out["instance_id"] = result.Instance.ID
-			out["remote_control"] = map[string]any{
-				"host":  result.Instance.Host,
-				"port":  result.Instance.RemotePort,
-				"token": result.Instance.RemoteToken,
-				"bound": result.Instance.Bound,
-			}
-		}
-		if result.MCPEnabled {
-			out["justamcp"] = map[string]any{
-				"enabled": true,
-				"port":    result.Instance.MCPPort,
-			}
-		}
-		if fullProfile {
-			out["profile"] = map[string]any{
-				"name":           profile.Name,
-				"features":       profile.Features,
-				"editor_version": profile.EditorVersion,
-				"justamcp":       profile.JustAMCP,
-				"remote_control": profile.RemoteControl,
-			}
 		}
 		return output.Write(format(), out)
 	}
@@ -528,6 +398,34 @@ after remote_control is ready.`,
 		},
 	}
 
+	handleURICmd := &cobra.Command{
+		Use:   "handle-uri <uri>",
+		Short: "Handle a blazium:// deep link (open, load, install, hub)",
+		Long: `Parses blazium:// URIs from the Hub or OS handlers and performs the matching action.
+
+Supported forms:
+  blazium://open?path=<path-or-file-url>
+  blazium://load?path=<path-or-file-url>
+  blazium://project/<url-encoded-path>
+  blazium://install?version=<ver>&channel=<optional>
+  blazium://hub  (or blazium:// with empty host)`,
+		Example: `  blazium-cli handle-uri "blazium://open?path=C%3A%5CGames%5CFoo"
+  blazium-cli handle-uri "blazium://install?version=0.6.714"
+  blazium-cli handle-uri blazium://hub`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			out, err := HandleURI(HandleURIOptions{
+				URI:            args[0],
+				DefaultRelease: opts.DefaultRelease,
+				Quiet:          quiet(),
+			})
+			if err != nil {
+				return err
+			}
+			return output.Write(format(), out)
+		},
+	}
+
 	addTemplatesCommands(root, opts, format)
-	root.AddCommand(installCmd, uninstallCmd, installPathCmd, editorsCmd, projectsCmd, openCmd, loadCmd)
+	root.AddCommand(installCmd, uninstallCmd, installPathCmd, editorsCmd, projectsCmd, openCmd, loadCmd, handleURICmd)
 }
