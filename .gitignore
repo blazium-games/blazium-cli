@@ -1,0 +1,12 @@
+*.exe
+*.zip
+*.tpz
+build/
+signed/
+artifacts/
+cli.json
+existing-cli.json
+data/*
+!data/.keep
+!data/cliBuild.txt
+!data/defaultEngineBuild.txt
