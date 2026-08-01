@@ -97,9 +97,27 @@ while IFS= read -r entry; do
     continue
   fi
 
-  got_remote="$(curl -fsSL "$url" | sha256sum | awk '{print $1}' | tr '[:upper:]' '[:lower:]')"
-  if [[ "$got_remote" != "$want" ]]; then
-    echo "FAIL $label: remote sha256 mismatch got $got_remote want $want ($url)" >&2
+  # Cache-bust + retry: Spaces/CDN can briefly serve a prior object after overwrite.
+  got_remote=""
+  remote_ok=0
+  for attempt in 1 2 3 4 5; do
+    bust="${url}"
+    if [[ "$bust" == *"?"* ]]; then
+      bust="${bust}&nocache=${RANDOM}${attempt}$(date +%s)"
+    else
+      bust="${bust}?nocache=${RANDOM}${attempt}$(date +%s)"
+    fi
+    if got_remote="$(curl -fsSL "$bust" | sha256sum | awk '{print $1}' | tr '[:upper:]' '[:lower:]')"; then
+      if [[ "$got_remote" == "$want" ]]; then
+        remote_ok=1
+        break
+      fi
+    fi
+    echo "retry $label: remote sha256 got ${got_remote:-curl-failed} want $want (attempt ${attempt}/5)"
+    sleep $((attempt * 2))
+  done
+  if [[ "$remote_ok" -ne 1 ]]; then
+    echo "FAIL $label: remote sha256 mismatch got ${got_remote:-curl-failed} want $want ($url)" >&2
     failures=$((failures + 1))
     continue
   fi

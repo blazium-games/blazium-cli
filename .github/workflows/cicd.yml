@@ -16,7 +16,30 @@ permissions:
   contents: read
 
 jobs:
+  # Single version for the whole workflow so build/manifest/release cannot diverge
+  # (e.g. a tag created mid-run must not change the version of later jobs).
+  resolve-version:
+    runs-on: ubuntu-latest
+    outputs:
+      simple_version: ${{ steps.version.outputs.simple_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get Version with Bioblaze/game-semver-action
+        uses: Bioblaze/game-semver-action@v10
+        id: version
+        with:
+          personal_github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Echo version
+        run: |
+          set -euo pipefail
+          echo "simple_version=${{ steps.version.outputs.simple_version }}"
+
   build:
+    needs: resolve-version
     runs-on: ubuntu-latest
 
     strategy:
@@ -53,15 +76,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Get Version with Bioblaze/game-semver-action
-        uses: Bioblaze/game-semver-action@v10
-        id: version
-        with:
-          personal_github_token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Write version to file
         run: |
-          echo "${{ steps.version.outputs.simple_version }}" > data/cliBuild.txt
+          echo "${{ needs.resolve-version.outputs.simple_version }}" > data/cliBuild.txt
 
       - name: Get highest nightly version
         run: |
@@ -198,7 +215,7 @@ jobs:
           space_name: ${{ secrets.DO_SPACE_NAME }}
           space_region: ${{ secrets.DO_SPACE_REGION }}
           source: ${{ startsWith(matrix.goos, 'windows') && './signed' || './build' }}/${{ matrix.output }}
-          out_dir: cli/${{ matrix.goos }}/${{ matrix.hub_arch }}/${{ steps.version.outputs.simple_version }}
+          out_dir: cli/${{ matrix.goos }}/${{ matrix.hub_arch }}/${{ needs.resolve-version.outputs.simple_version }}
 
       - uses: BetaHuhn/do-spaces-action@v2
         if: ${{ matrix.goos != 'windows' }}
@@ -218,11 +235,11 @@ jobs:
           space_name: ${{ secrets.DO_SPACE_NAME }}
           space_region: ${{ secrets.DO_SPACE_REGION }}
           source: ${{ startsWith(matrix.goos, 'windows') && './signed' || './build' }}/${{ matrix.output }}.sig
-          out_dir: cli/${{ matrix.goos }}/${{ matrix.hub_arch }}/${{ steps.version.outputs.simple_version }}
+          out_dir: cli/${{ matrix.goos }}/${{ matrix.hub_arch }}/${{ needs.resolve-version.outputs.simple_version }}
 
       - name: Updating Cerebro
         env:
-          URL: https://cdn.blazium.app/cli/${{ matrix.goos }}/${{ matrix.hub_arch }}/${{ steps.version.outputs.simple_version }}/${{ matrix.output }}
+          URL: https://cdn.blazium.app/cli/${{ matrix.goos }}/${{ matrix.hub_arch }}/${{ needs.resolve-version.outputs.simple_version }}/${{ matrix.output }}
         run: |
           if [[ "${{ matrix.goos }}" != "windows" ]]; then
             SIG_URL="${URL}.sig"
@@ -242,7 +259,7 @@ jobs:
           {
             "name": "Blazium CLI",
             "type": "cli",
-            "version": "${{ steps.version.outputs.simple_version }}",
+            "version": "${{ needs.resolve-version.outputs.simple_version }}",
             "os": "${{ matrix.goos }}",
             "arch": "${{ matrix.hub_arch }}",
             "file": "$URL",
@@ -256,17 +273,11 @@ jobs:
           )"
 
   manifest:
-    needs: build
+    needs: [resolve-version, build]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Get Version with Bioblaze/game-semver-action
-        uses: Bioblaze/game-semver-action@v10
-        id: version
-        with:
-          personal_github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-go@v4
         with:
@@ -306,7 +317,7 @@ jobs:
         run: |
           set -euo pipefail
           MANIFEST="$(curl -fsSL https://cdn.blazium.app/cli/cli.json)"
-          VERSION="${{ steps.version.outputs.simple_version }}"
+          VERSION="${{ needs.resolve-version.outputs.simple_version }}"
           fetch_arch() {
             local arch="$1"
             local dest="artifacts/windows/${arch}/blazium-cli.exe"
@@ -364,7 +375,7 @@ jobs:
         env:
           CEREBRO_MANIFEST: ${{ secrets.CEREBRO_URL }}/api/v1/tools/cli/manifest
         run: |
-          ARGS=(--version "${{ steps.version.outputs.simple_version }}" --artifacts artifacts --out cli.json)
+          ARGS=(--version "${{ needs.resolve-version.outputs.simple_version }}" --artifacts artifacts --out cli.json)
           if [ -f existing-cli.json ]; then
             ARGS+=(--base-manifest existing-cli.json)
           fi
@@ -378,7 +389,7 @@ jobs:
           chmod +x scripts/verify-cli-manifest.sh
           scripts/verify-cli-manifest.sh \
             --manifest cli.json \
-            --version "${{ steps.version.outputs.simple_version }}" \
+            --version "${{ needs.resolve-version.outputs.simple_version }}" \
             --artifacts artifacts
 
       - uses: BetaHuhn/do-spaces-action@v2
@@ -397,10 +408,10 @@ jobs:
           space_name: ${{ secrets.DO_SPACE_NAME }}
           space_region: ${{ secrets.DO_SPACE_REGION }}
           source: cli.json
-          out_dir: cli/${{ steps.version.outputs.simple_version }}
+          out_dir: cli/${{ needs.resolve-version.outputs.simple_version }}
 
   github-release:
-    needs: manifest
+    needs: [resolve-version, manifest]
     if: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     permissions:
@@ -408,17 +419,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Get Version with Bioblaze/game-semver-action
-        uses: Bioblaze/game-semver-action@v10
-        id: version
-        with:
-          personal_github_token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Resolve tag
         id: ver
         run: |
           set -euo pipefail
-          V="${{ steps.version.outputs.simple_version }}"
+          V="${{ needs.resolve-version.outputs.simple_version }}"
           test -n "$V"
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "tag=v$V" >> "$GITHUB_OUTPUT"
