@@ -21,7 +21,7 @@ jobs:
   resolve-version:
     runs-on: ubuntu-latest
     outputs:
-      simple_version: ${{ steps.version.outputs.simple_version }}
+      simple_version: ${{ steps.finalize.outputs.simple_version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -33,10 +33,38 @@ jobs:
         with:
           personal_github_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Echo version
+      # Public CLI line starts at 0.1.0. game-semver is pinned by tag v0.0.43, so
+      # take max(computed, 0.1.0) and bump past CDN latest when still not newer.
+      - name: Finalize version (0.1.0 baseline + CDN monotonic)
+        id: finalize
         run: |
           set -euo pipefail
-          echo "simple_version=${{ steps.version.outputs.simple_version }}"
+          COMPUTED="${{ steps.version.outputs.simple_version }}"
+          BASE="0.1.0"
+          CDN_LATEST="$(curl -fsSL https://cdn.blazium.app/cli/cli.json | jq -r '.latest // empty' || true)"
+          if [[ "$CDN_LATEST" == "null" ]]; then
+            CDN_LATEST=""
+          fi
+
+          CANDIDATE="$(printf '%s\n%s\n' "$COMPUTED" "$BASE" | sort -V | tail -n1)"
+
+          bump_patch() {
+            local v="$1"
+            local major minor patch
+            IFS=. read -r major minor patch <<< "$v"
+            patch="${patch%%[^0-9]*}"
+            echo "${major}.${minor}.$((patch + 1))"
+          }
+
+          if [[ -n "$CDN_LATEST" ]]; then
+            HIGHER="$(printf '%s\n%s\n' "$CANDIDATE" "$CDN_LATEST" | sort -V | tail -n1)"
+            if [[ "$HIGHER" == "$CDN_LATEST" ]]; then
+              CANDIDATE="$(bump_patch "$CDN_LATEST")"
+            fi
+          fi
+
+          echo "computed=${COMPUTED} base=${BASE} cdn_latest=${CDN_LATEST:-none} => ${CANDIDATE}"
+          echo "simple_version=${CANDIDATE}" >> "$GITHUB_OUTPUT"
 
   build:
     needs: resolve-version
