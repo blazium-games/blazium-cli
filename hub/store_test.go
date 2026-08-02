@@ -49,7 +49,7 @@ func TestEditorsAddDefaultRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ed, err := f.AddEditorFromPath(bin, "0.6.1", "windows", "x86_64", false)
+	ed, err := f.AddEditorFromPath(bin, "0.6.1", "windows", "x86_64", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
