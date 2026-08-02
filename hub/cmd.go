@@ -21,7 +21,7 @@ type Options struct {
 	Quiet          *bool
 }
 
-// AddCommands registers install, uninstall, editors, install-path, open, projects on root.
+// AddCommands registers install, uninstall, editors, install-path, open, load, handle-uri, projects on root.
 func AddCommands(root *cobra.Command, opts Options) {
 	format := func() string {
 		if opts.Format != nil {
@@ -287,7 +287,7 @@ Use --templates to also download and install export templates.`,
 					addArch = da
 				}
 			}
-			ed, err := f.AddEditorFromPath(args[0], addVersion, addPlatform, addArch, addMono)
+			ed, err := f.AddEditorFromPath(args[0], addVersion, addPlatform, addArch, "", addMono)
 			if err != nil {
 				return err
 			}
@@ -542,6 +542,36 @@ after remote_control is ready.`,
 		},
 	}
 
+	handleURICmd := &cobra.Command{
+		Use:   "handle-uri <uri>",
+		Short: "Handle a blazium:// deep link (open, load, install, register, hub)",
+		Long: `Parses blazium:// URIs from the Hub or OS handlers and performs the matching action.
+
+Supported forms:
+  blazium://open?path=<path-or-file-url>
+  blazium://load?path=<path-or-file-url>
+  blazium://project/<url-encoded-path>
+  blazium://install?version=<ver>&channel=<optional>&platform=&arch=&mono=
+  blazium://register?path=<path>&version=&channel=&platform=&arch=&mono=
+  blazium://hub  (or blazium:// with empty host)`,
+		Example: `  blazium-cli handle-uri "blazium://open?path=C%3A%5CGames%5CFoo"
+  blazium-cli handle-uri "blazium://install?version=0.6.714"
+  blazium-cli handle-uri "blazium://register?path=C%3A%5CEditors%5Cblazium.exe&version=0.6.714&channel=release"
+  blazium-cli handle-uri blazium://hub`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			out, err := HandleURI(HandleURIOptions{
+				URI:            args[0],
+				DefaultRelease: opts.DefaultRelease,
+				Quiet:          quiet(),
+			})
+			if err != nil {
+				return err
+			}
+			return output.Write(format(), out)
+		},
+	}
+
 	addTemplatesCommands(root, opts, format)
-	root.AddCommand(installCmd, uninstallCmd, installPathCmd, editorsCmd, projectsCmd, openCmd, loadCmd)
+	root.AddCommand(installCmd, uninstallCmd, installPathCmd, editorsCmd, projectsCmd, openCmd, loadCmd, handleURICmd)
 }

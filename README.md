@@ -78,6 +78,7 @@ blazium-cli install-path
 blazium-cli install-path D:\Blazium\Editors
 blazium-cli open ./MyProject
 blazium-cli load ./MyProject
+blazium-cli handle-uri "blazium://hub"
 blazium-cli projects
 blazium-cli projects add ./MyProject
 blazium-cli projects remove MyProject
@@ -88,6 +89,17 @@ blazium-cli --help
 ```
 
 Editors install under `{install-path}/{channel}/{version}` (`release`, `prerelease`, or `nightly`).
+
+### Deep links (`handle-uri`)
+
+| URI | Action |
+|-----|--------|
+| `blazium://hub` | Acknowledge hub deep link |
+| `blazium://open?path=<path>` | Open project (focus if already running) |
+| `blazium://load?path=<path>` | Load project with full profile |
+| `blazium://project/<encoded-path>` | Shorthand for open |
+| `blazium://install?version=<ver>&channel=` | Download/install editor |
+| `blazium://register?path=<path>&version=&channel=` | Register a local editor binary |
 
 ### Default editor policy
 
