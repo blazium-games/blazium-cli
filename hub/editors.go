@@ -125,7 +125,9 @@ func (f *File) SetDefaultEditor(version string) error {
 }
 
 // AddEditorFromPath registers an existing binary/dir.
-func (f *File) AddEditorFromPath(path, version, platform, arch string, mono bool) (Editor, error) {
+// Channel may be empty; when empty, InferChannel is used, then parent-dir channel
+// inference (…/nightly/0.6.751) if applicable.
+func (f *File) AddEditorFromPath(path, version, platform, arch, channel string, mono bool) (Editor, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return Editor{}, err
@@ -161,10 +163,18 @@ func (f *File) AddEditorFromPath(path, version, platform, arch string, mono bool
 		Mono:     mono,
 		Channel:  InferChannel(version, false),
 	}
-	// Prefer parent dir name when it is a known channel (…/nightly/0.6.751).
-	parent := filepath.Base(filepath.Dir(dir))
-	if ch, err := NormalizeChannel(parent); err == nil {
+	if strings.TrimSpace(channel) != "" {
+		ch, err := NormalizeChannel(channel)
+		if err != nil {
+			return Editor{}, err
+		}
 		ed.Channel = ch
+	} else {
+		// Prefer parent dir name when it is a known channel (…/nightly/0.6.751).
+		parent := filepath.Base(filepath.Dir(dir))
+		if ch, err := NormalizeChannel(parent); err == nil {
+			ed.Channel = ch
+		}
 	}
 	f.UpsertEditor(ed)
 	return ed, nil

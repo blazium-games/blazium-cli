@@ -78,6 +78,7 @@ blazium-cli install-path
 blazium-cli install-path D:\Blazium\Editors
 blazium-cli open ./MyProject
 blazium-cli load ./MyProject
+blazium-cli handle-uri "blazium://hub"
 blazium-cli projects
 blazium-cli projects add ./MyProject
 blazium-cli projects remove MyProject
@@ -88,6 +89,26 @@ blazium-cli --help
 ```
 
 Editors install under `{install-path}/{channel}/{version}` (`release`, `prerelease`, or `nightly`).
+
+### Deep links (`handle-uri`)
+
+| URI | Action |
+|-----|--------|
+| `blazium://hub` | Launch/focus Hub via authenticated remote_control |
+| `blazium://open?path=<path>` | Open project (focus if already running) |
+| `blazium://load?path=<path>` | Load project with full profile |
+| `blazium://project/<encoded-path>` | Shorthand for open |
+| `blazium://install?version=<ver>&channel=` | Download/install editor |
+| `blazium://register?path=<path>&version=&channel=` | Register a local editor binary |
+
+OS installers register `blazium://` to **this CLI** (`handle-uri`). For Hub, CLI loads `hub_remote.json` from the **user** path then the **machine** path (`%ProgramData%\blazium\` / `/etc/blazium/`), launches Hub if needed, waits for `/v1/health`, then `exec` `show_hub` / `focus_window`. Editors use the same launch → wait → talk pattern with per-instance tokens in `cli.json`.
+
+```text
+blazium-cli hub-remote ensure
+blazium-cli hub-remote ensure --path "C:\ProgramData\blazium\hub_remote.json"
+```
+
+`hub-remote ensure` never rotates a valid token; `--path` writes only that file (installer/machine use).
 
 ### Default editor policy
 
