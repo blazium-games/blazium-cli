@@ -108,12 +108,29 @@ func TestParseBlaziumURIErrors(t *testing.T) {
 }
 
 func TestResolveURIPathPercentDecode(t *testing.T) {
-	got, err := ResolveURIPath("C%3A%5CGames%5CFoo")
+	if runtime.GOOS == "windows" {
+		got, err := ResolveURIPath("C%3A%5CGames%5CFoo")
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := filepath.Abs(`C:\Games\Foo`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != filepath.Clean(want) {
+			t.Fatalf("got %q want %q", got, want)
+		}
+		return
+	}
+	got, err := ResolveURIPath("%2Ftmp%2FMyGame")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `C:\Games\Foo`
-	if got != want {
+	want, err := filepath.Abs("/tmp/MyGame")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != filepath.Clean(want) {
 		t.Fatalf("got %q want %q", got, want)
 	}
 }
@@ -124,8 +141,11 @@ func TestResolveURIPathFileURL(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := filepath.FromSlash("C:/Games/Foo")
-		if got != want {
+		want, err := filepath.Abs(filepath.FromSlash("C:/Games/Foo"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != filepath.Clean(want) {
 			t.Fatalf("got %q want %q", got, want)
 		}
 		return
@@ -134,8 +154,12 @@ func TestResolveURIPathFileURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "/tmp/MyGame" {
-		t.Fatalf("got %q", got)
+	want, err := filepath.Abs("/tmp/MyGame")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != filepath.Clean(want) {
+		t.Fatalf("got %q want %q", got, want)
 	}
 }
 
