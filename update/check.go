@@ -55,7 +55,7 @@ func cacheBust(raw string) string {
 // Check runs product update checks.
 func Check(products []string, opts CheckOptions) ([]ProductStatus, error) {
 	if len(products) == 0 || (len(products) == 1 && products[0] == "all") {
-		products = []string{"hub", "cli", "editor", "templates"}
+		products = []string{"hub", "cli", "crash_reporter", "editor", "templates"}
 	}
 	channel := strings.TrimSpace(opts.Channel)
 	if channel == "" {
@@ -68,6 +68,8 @@ func Check(products []string, opts CheckOptions) ([]ProductStatus, error) {
 			out = append(out, checkCLI(opts.CLIVersion))
 		case "hub":
 			out = append(out, checkHub(opts.HubCurrent, opts.InstallRoot))
+		case "crash_reporter":
+			out = append(out, checkCrashReporter(opts.InstallRoot))
 		case "editor":
 			out = append(out, checkEditor(channel))
 		case "templates":
