@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -13,11 +15,12 @@ import (
 
 // LaunchOptions configures editor launch with remote_control / JustAMCP.
 type LaunchOptions struct {
-	EditorPath    string
-	EditorVersion string
-	ProjectPath   string
-	Profile       ProjectProfile
-	Quiet         bool
+	EditorPath        string
+	EditorVersion     string
+	ProjectPath       string
+	Profile           ProjectProfile
+	Quiet             bool
+	CrashReporterPath string
 }
 
 // LaunchResult describes a launched editor instance.
@@ -28,8 +31,53 @@ type LaunchResult struct {
 	MCPEnabled    bool
 }
 
+// DefaultCrashReporterDest is the Hub sidecar path under BLAZIUM (same as update.CrashReporterDest).
+func DefaultCrashReporterDest() string {
+	root := strings.TrimSpace(os.Getenv("BLAZIUM"))
+	if root == "" {
+		if runtime.GOOS == "windows" {
+			pf := os.Getenv("ProgramFiles")
+			if pf == "" {
+				pf = `C:\Program Files`
+			}
+			root = filepath.Join(pf, "Blazium")
+		} else {
+			root = "/opt/blazium"
+		}
+	}
+	if runtime.GOOS == "windows" {
+		return filepath.Join(root, "Hub", "crash_reporter.exe")
+	}
+	return filepath.Join(root, "bin", "crash_reporter")
+}
+
+// ResolveCrashReporterPath returns an existing sidecar path. Explicit wins; otherwise
+// DefaultCrashReporterDest. Missing file returns empty (launch still proceeds).
+func ResolveCrashReporterPath(explicit string) string {
+	p := strings.TrimSpace(explicit)
+	if p != "" {
+		if abs, err := filepath.Abs(p); err == nil {
+			p = abs
+		}
+		if crashReporterFileExists(p) {
+			return p
+		}
+		return ""
+	}
+	dest := DefaultCrashReporterDest()
+	if crashReporterFileExists(dest) {
+		return dest
+	}
+	return ""
+}
+
+func crashReporterFileExists(path string) bool {
+	st, err := os.Stat(path)
+	return err == nil && !st.IsDir()
+}
+
 // BuildEditorArgs builds argv after the editor binary (or after macOS --args).
-func BuildEditorArgs(projectPath string, remotePort int, remoteToken string, enableRemote bool, mcpPort int, enableMCP bool) []string {
+func BuildEditorArgs(projectPath string, remotePort int, remoteToken string, enableRemote bool, mcpPort int, enableMCP bool, crashReporterPath string) []string {
 	args := []string{"--path", projectPath}
 	if enableRemote {
 		args = append(args,
@@ -40,6 +88,9 @@ func BuildEditorArgs(projectPath string, remotePort int, remoteToken string, ena
 	}
 	if enableMCP && mcpPort > 0 {
 		args = append(args, "--enable-mcp", "--mcp-port", fmt.Sprintf("%d", mcpPort))
+	}
+	if p := strings.TrimSpace(crashReporterPath); p != "" {
+		args = append(args, "--crash-reporter", p)
 	}
 	return args
 }
@@ -87,7 +138,7 @@ func LaunchEditor(opts LaunchOptions) (LaunchResult, error) {
 		}
 	}
 
-	args := BuildEditorArgs(opts.ProjectPath, remotePort, token, enableRemote, mcpPort, enableMCP)
+	args := BuildEditorArgs(opts.ProjectPath, remotePort, token, enableRemote, mcpPort, enableMCP, ResolveCrashReporterPath(opts.CrashReporterPath))
 	pid, err := startEditorProcess(opts.EditorPath, args)
 	if err != nil {
 		return LaunchResult{}, err
