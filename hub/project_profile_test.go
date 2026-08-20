@@ -48,7 +48,7 @@ blazium/editor_version="0.6.5"
 }
 
 func TestBuildEditorArgs(t *testing.T) {
-	args := BuildEditorArgs("/proj", 6508, "tok", true, 6509, true)
+	args := BuildEditorArgs("/proj", 6508, "tok", true, 6509, true, "")
 	joined := filepath.ToSlash(args[0] + args[1])
 	_ = joined
 	want := []string{
@@ -66,5 +66,56 @@ func TestBuildEditorArgs(t *testing.T) {
 		if args[i] != want[i] {
 			t.Fatalf("args[%d]=%q want %q", i, args[i], want[i])
 		}
+	}
+}
+
+func TestBuildEditorArgsCrashReporter(t *testing.T) {
+	args := BuildEditorArgs("/proj", 0, "", false, 0, false, `C:\Blazium\Hub\crash_reporter.exe`)
+	want := []string{"--path", "/proj", "--crash-reporter", `C:\Blazium\Hub\crash_reporter.exe`}
+	if len(args) != len(want) {
+		t.Fatalf("args=%v", args)
+	}
+	for i := range want {
+		if args[i] != want[i] {
+			t.Fatalf("args[%d]=%q want %q", i, args[i], want[i])
+		}
+	}
+}
+
+func TestResolveCrashReporterPathExplicit(t *testing.T) {
+	dir := t.TempDir()
+	dest := filepath.Join(dir, "crash_reporter")
+	if err := os.WriteFile(dest, []byte("ok"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := ResolveCrashReporterPath(dest)
+	abs, err := filepath.Abs(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != abs {
+		t.Fatalf("got %q want %q", got, abs)
+	}
+	if ResolveCrashReporterPath(filepath.Join(dir, "missing")) != "" {
+		t.Fatal("missing explicit path should be omitted")
+	}
+}
+
+func TestResolveCrashReporterPathFallback(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BLAZIUM", root)
+	if ResolveCrashReporterPath("") != "" {
+		t.Fatal("missing default sidecar should be omitted")
+	}
+	dest := DefaultCrashReporterDest()
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dest, []byte("ok"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := ResolveCrashReporterPath("")
+	if got != dest {
+		t.Fatalf("got %q want %q", got, dest)
 	}
 }

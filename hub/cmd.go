@@ -34,12 +34,13 @@ func AddCommands(root *cobra.Command, opts Options) {
 	}
 
 	var (
-		channel  string
-		platform string
-		arch     string
-		mono     bool
-		withTpl  bool
-		yes      bool
+		channel       string
+		platform      string
+		arch          string
+		mono          bool
+		withTpl       bool
+		yes           bool
+		crashReporter string
 	)
 
 	installCmd := &cobra.Command{
@@ -467,11 +468,12 @@ Unset policy defaults to latest release.`,
 			return err
 		}
 		result, err := LaunchEditor(LaunchOptions{
-			EditorPath:    ed.Path,
-			EditorVersion: ed.Version,
-			ProjectPath:   projectPath,
-			Profile:       profile,
-			Quiet:         quiet(),
+			EditorPath:        ed.Path,
+			EditorVersion:     ed.Version,
+			ProjectPath:       projectPath,
+			Profile:           profile,
+			Quiet:             quiet(),
+			CrashReporterPath: crashReporter,
 		})
 		if err != nil {
 			return err
@@ -528,6 +530,9 @@ Editor resolution order:
 		},
 	}
 
+	crashReporterFlagHelp := "Editor sidecar crash reporter executable (omitted: Hub sidecar under BLAZIUM if present)"
+	openCmd.Flags().StringVar(&crashReporter, "crash-reporter", "", crashReporterFlagHelp)
+
 	loadCmd := &cobra.Command{
 		Use:   "load <project-path-or-name>",
 		Short: "Profile a project (JustAMCP/remote_control/etc.) and launch the editor",
@@ -541,6 +546,7 @@ after remote_control is ready.`,
 			return runLaunch(args[0], true)
 		},
 	}
+	loadCmd.Flags().StringVar(&crashReporter, "crash-reporter", "", crashReporterFlagHelp)
 
 	handleURICmd := &cobra.Command{
 		Use:   "handle-uri <uri>",
@@ -561,9 +567,10 @@ Supported forms:
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out, err := HandleURI(HandleURIOptions{
-				URI:            args[0],
-				DefaultRelease: opts.DefaultRelease,
-				Quiet:          quiet(),
+				URI:               args[0],
+				DefaultRelease:    opts.DefaultRelease,
+				Quiet:             quiet(),
+				CrashReporterPath: crashReporter,
 			})
 			if err != nil {
 				return err
@@ -571,6 +578,7 @@ Supported forms:
 			return output.Write(format(), out)
 		},
 	}
+	handleURICmd.Flags().StringVar(&crashReporter, "crash-reporter", "", crashReporterFlagHelp)
 
 	hubRemotePath := ""
 	hubRemoteCmd := &cobra.Command{
