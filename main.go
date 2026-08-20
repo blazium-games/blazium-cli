@@ -39,7 +39,7 @@ Templates:
   templates list|download|path  (individual files, platform sets, runtime, full .tpz)
 
 Updates:
-  update check|apply  (cli, hub, editor, templates check; apply cli/hub)
+  update check|apply  (cli, hub, crash_reporter, editor, templates check; apply cli/hub/crash_reporter)
 
 Info:
   version  (print CLI build version; also --version)
