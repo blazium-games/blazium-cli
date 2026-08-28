@@ -266,10 +266,26 @@ func Apply(plan Plan) error {
 }
 
 // ReplaceExecutable swaps newPath into dest (Windows: rename-aside the running exe).
+// When dest does not exist yet (first install), newPath is installed in place.
 // When newPath is on another volume, falls back to copy.
 func ReplaceExecutable(dest, newPath string) error {
 	dest = filepath.Clean(dest)
 	newPath = filepath.Clean(newPath)
+	if _, err := os.Stat(dest); err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+			return err
+		}
+		if err := os.Rename(newPath, dest); err != nil {
+			if err2 := copyFile(newPath, dest); err2 != nil {
+				return err2
+			}
+			_ = os.Remove(newPath)
+		}
+		return nil
+	}
 	backup := dest + ".bak." + time.Now().Format("20060102150405")
 	if runtime.GOOS == "windows" {
 		// On Windows, the running exe may be locked; rename aside then swap.

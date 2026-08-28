@@ -85,6 +85,28 @@ func TestReplaceExecutableWritable(t *testing.T) {
 	}
 }
 
+func TestReplaceExecutableMissingDest(t *testing.T) {
+	dir := t.TempDir()
+	dest := filepath.Join(dir, "bin", "crash_reporter")
+	if runtime.GOOS == "windows" {
+		dest += ".exe"
+	}
+	src := filepath.Join(dir, "new.bin")
+	if err := os.WriteFile(src, []byte("first-install"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := ReplaceExecutable(dest, src); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "first-install" {
+		t.Fatalf("got %q", got)
+	}
+}
+
 func TestPsQuote(t *testing.T) {
 	if got := psQuote(`C:\Program Files\a`); got != `'C:\Program Files\a'` {
 		t.Fatalf("got %q", got)
