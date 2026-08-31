@@ -24,13 +24,14 @@ func NewCommand(opts Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update",
 		Short: "Check for or apply Blazium product updates",
-		Long: `Check CDN catalogs for updates to blazium-cli, Blazium Hub, crash reporter, editors, and export templates.
-Apply downloads and installs CLI, Hub (via the published installer), or the Hub crash reporter sidecar.`,
+		Long: `Check CDN catalogs for updates to blazium-cli, Blazium Hub, crash reporter, toolchain, editors, and export templates.
+Apply downloads and installs CLI, Hub (via the published installer), the Hub crash reporter sidecar, or the Blazium Toolchain manager.`,
 		Example: `  blazium-cli update check
   blazium-cli update check --product cli --json
   blazium-cli update apply --product cli
   blazium-cli update apply --product hub --current 0.1.0 --install-root "C:\\Program Files\\Blazium" --launch
-  blazium-cli update apply --product crash_reporter --install-root "C:\\Program Files\\Blazium"`,
+  blazium-cli update apply --product crash_reporter --install-root "C:\\Program Files\\Blazium"
+  blazium-cli update apply --product toolchain --install-root "C:\\Program Files\\Blazium"`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
@@ -84,7 +85,7 @@ func newCheckCommand(opts Options) *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().StringVar(&product, "product", "all", "Product(s): all, cli, hub, crash_reporter, editor, templates (comma-separated)")
+	cmd.Flags().StringVar(&product, "product", "all", "Product(s): all, cli, hub, crash_reporter, toolchain, editor, templates (comma-separated)")
 	cmd.Flags().StringVar(&channel, "channel", "release", "Editor/templates channel: release or nightly")
 	cmd.Flags().StringVar(&hubCurrent, "current", "", "Current Hub version (also BLAZIUM_HUB_VERSION)")
 	cmd.Flags().StringVar(&installRoot, "install-root", "", "Hub install root for VERSION discovery / apply")
@@ -101,7 +102,7 @@ func newApplyCommand(opts Options) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "apply",
-		Short: "Download and apply an update for cli, hub, or crash_reporter",
+		Short: "Download and apply an update for cli, hub, crash_reporter, or toolchain",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			p := strings.ToLower(strings.TrimSpace(product))
 			switch p {
@@ -203,12 +204,44 @@ func newApplyCommand(opts Options) *cobra.Command {
 					"installed": plan.Version,
 					"path":      plan.DestPath,
 				})
+			case "toolchain":
+				plan, err := ResolveToolchainPlan(target, installRoot)
+				if err != nil {
+					return err
+				}
+				available := plan.Current == "" || cdn.CompareSemver(plan.Version, plan.Current) > 0
+				if dryRun {
+					return output.Write(formatOf(opts), map[string]any{
+						"dry_run":          true,
+						"product":          "toolchain",
+						"current_version":  plan.Current,
+						"target_version":   plan.Version,
+						"update_available": available,
+						"url":              plan.URL,
+						"sha256":           plan.SHA256,
+						"filename":         plan.Filename,
+						"size":             plan.Size,
+						"install_root":     plan.InstallRoot,
+						"path":             plan.DestPath,
+					})
+				}
+				plan, err = ApplyToolchain(target, installRoot)
+				if err != nil {
+					return err
+				}
+				return output.Write(formatOf(opts), map[string]any{
+					"ok":        true,
+					"product":   "toolchain",
+					"previous":  plan.Current,
+					"installed": plan.Version,
+					"path":      plan.DestPath,
+				})
 			default:
-				return fmt.Errorf("apply supports --product cli|hub|crash_reporter (got %q); editor/templates use install / templates download", product)
+				return fmt.Errorf("apply supports --product cli|hub|crash_reporter|toolchain (got %q); editor/templates use install / templates download", product)
 			}
 		},
 	}
-	cmd.Flags().StringVar(&product, "product", "", "Product to update: cli, hub, or crash_reporter (required)")
+	cmd.Flags().StringVar(&product, "product", "", "Product to update: cli, hub, crash_reporter, or toolchain (required)")
 	cmd.Flags().StringVar(&target, "target", "", "Specific version (default: manifest latest)")
 	cmd.Flags().StringVar(&hubCurrent, "current", "", "Current Hub version")
 	cmd.Flags().StringVar(&installRoot, "install-root", "", "Hub install directory for Inno /DIR=")
