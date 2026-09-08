@@ -107,7 +107,7 @@ while IFS= read -r entry; do
     else
       bust="${bust}?nocache=${RANDOM}${attempt}$(date +%s)"
     fi
-    if got_remote="$(curl -fsSL "$bust" | sha256sum | awk '{print $1}' | tr '[:upper:]' '[:lower:]')"; then
+    if got_remote="$(curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$bust" | sha256sum | awk '{print $1}' | tr '[:upper:]' '[:lower:]')"; then
       if [[ "$got_remote" == "$want" ]]; then
         remote_ok=1
         break

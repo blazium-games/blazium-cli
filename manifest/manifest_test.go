@@ -61,3 +61,111 @@ func TestCompareSemver(t *testing.T) {
 		t.Fatal("expected 1.2.3 > 1.2.2")
 	}
 }
+
+func TestNextPublishVersion(t *testing.T) {
+	t.Parallel()
+
+	occupied := func(taken ...string) func(string) bool {
+		set := map[string]struct{}{}
+		for _, v := range taken {
+			set[v] = struct{}{}
+		}
+		return func(v string) bool {
+			_, ok := set[v]
+			return ok
+		}
+	}
+
+	cases := []struct {
+		name      string
+		computed  string
+		baseline  string
+		cdnLatest string
+		taken     []string
+		want      string
+	}{
+		{
+			name:      "public line starts at 0.1.0 then bumps past CDN latest",
+			computed:  "0.0.43",
+			baseline:  "0.1.0",
+			cdnLatest: "0.1.3",
+			want:      "0.1.4",
+		},
+		{
+			name:      "skip version whose CDN objects already exist",
+			computed:  "0.0.43",
+			baseline:  "0.1.0",
+			cdnLatest: "0.1.3",
+			taken:     []string{"0.1.4"},
+			want:      "0.1.5",
+		},
+		{
+			name:      "skip a run of occupied versions",
+			computed:  "0.0.43",
+			baseline:  "0.1.0",
+			cdnLatest: "0.1.3",
+			taken:     []string{"0.1.4", "0.1.5"},
+			want:      "0.1.6",
+		},
+		{
+			name:      "keep computed when it is already newer and free",
+			computed:  "0.2.0",
+			baseline:  "0.1.0",
+			cdnLatest: "0.1.3",
+			want:      "0.2.0",
+		},
+		{
+			name:      "bump computed when that version is already on the CDN",
+			computed:  "0.2.0",
+			baseline:  "0.1.0",
+			cdnLatest: "0.1.3",
+			taken:     []string{"0.2.0"},
+			want:      "0.2.1",
+		},
+		{
+			name:     "empty CDN latest uses max computed baseline",
+			computed: "0.0.10",
+			baseline: "0.1.0",
+			want:     "0.1.0",
+		},
+		{
+			name:      "treat JSON null latest as empty",
+			computed:  "0.1.0",
+			baseline:  "0.1.0",
+			cdnLatest: "null",
+			want:      "0.1.0",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := NextPublishVersion(tc.computed, tc.baseline, tc.cdnLatest, occupied(tc.taken...))
+			if got != tc.want {
+				t.Fatalf("got %q want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestVersionedObjectURLs(t *testing.T) {
+	t.Parallel()
+	urls := VersionedObjectURLs("0.1.4")
+	if len(urls) != 5 {
+		t.Fatalf("urls=%d", len(urls))
+	}
+	want := "https://cdn.blazium.app/cli/windows/x86_32/0.1.4/blazium-cli.exe"
+	found := false
+	for _, u := range urls {
+		if u == want {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("missing %s in %v", want, urls)
+	}
+	if VersionedObjectURLs(" ") != nil {
+		t.Fatal("expected nil for blank version")
+	}
+}

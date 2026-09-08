@@ -33,37 +33,20 @@ jobs:
         with:
           personal_github_token: ${{ secrets.GITHUB_TOKEN }}
 
+      - uses: actions/setup-go@v4
+        with:
+          go-version: 1.23.2
+
       # Public CLI line starts at 0.1.0. game-semver is pinned by tag v0.0.43, so
-      # take max(computed, 0.1.0) and bump past CDN latest when still not newer.
+      # take max(computed, 0.1.0), bump past CDN latest, and skip versions whose
+      # binaries are already on the CDN (a failed prior publish leaves objects
+      # behind; Windows Authenticode hashes change on every sign).
       - name: Finalize version (0.1.0 baseline + CDN monotonic)
         id: finalize
         run: |
           set -euo pipefail
           COMPUTED="${{ steps.version.outputs.simple_version }}"
-          BASE="0.1.0"
-          CDN_LATEST="$(curl -fsSL https://cdn.blazium.app/cli/cli.json | jq -r '.latest // empty' || true)"
-          if [[ "$CDN_LATEST" == "null" ]]; then
-            CDN_LATEST=""
-          fi
-
-          CANDIDATE="$(printf '%s\n%s\n' "$COMPUTED" "$BASE" | sort -V | tail -n1)"
-
-          bump_patch() {
-            local v="$1"
-            local major minor patch
-            IFS=. read -r major minor patch <<< "$v"
-            patch="${patch%%[^0-9]*}"
-            echo "${major}.${minor}.$((patch + 1))"
-          }
-
-          if [[ -n "$CDN_LATEST" ]]; then
-            HIGHER="$(printf '%s\n%s\n' "$CANDIDATE" "$CDN_LATEST" | sort -V | tail -n1)"
-            if [[ "$HIGHER" == "$CDN_LATEST" ]]; then
-              CANDIDATE="$(bump_patch "$CDN_LATEST")"
-            fi
-          fi
-
-          echo "computed=${COMPUTED} base=${BASE} cdn_latest=${CDN_LATEST:-none} => ${CANDIDATE}"
+          CANDIDATE="$(go run ./cmd/finalize-cli-version --computed "$COMPUTED" --baseline 0.1.0)"
           echo "simple_version=${CANDIDATE}" >> "$GITHUB_OUTPUT"
 
   build:
