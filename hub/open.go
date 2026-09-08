@@ -2,8 +2,6 @@ package hub
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -20,27 +18,22 @@ func (f *File) ResolveProjectPath(pathOrName string) (string, error) {
 	if pathOrName == "" {
 		return "", fmt.Errorf("project path or name is required")
 	}
-	if err := ValidateProjectDir(pathOrName); err == nil {
-		abs, _ := filepath.Abs(pathOrName)
+	if abs, err := NormalizeProjectDir(pathOrName); err == nil {
 		return abs, nil
 	}
 	if p := f.FindProject(pathOrName); p != nil {
-		if err := ValidateProjectDir(p.Path); err != nil {
-			return "", err
-		}
-		return p.Path, nil
+		return NormalizeProjectDir(p.Path)
 	}
-	return "", fmt.Errorf("project not found: %s (need a directory with project.godot or a registered name)", pathOrName)
+	return "", fmt.Errorf("project not found: %s (need a directory with project.blazium or project.godot, or a registered name)", pathOrName)
 }
 
 // ResolveEditorForProject picks an installed editor for a project.
 // Order: blazium/editor_version → config/features match → default editor.
 func (f *File) ResolveEditorForProject(projectPath string) (*Editor, string, error) {
-	data, err := os.ReadFile(filepath.Join(projectPath, "project.godot"))
+	text, err := ReadProjectSettingsText(projectPath)
 	if err != nil {
 		return nil, "", err
 	}
-	text := string(data)
 
 	if m := reEditorVersion.FindStringSubmatch(text); len(m) == 2 {
 		ver := strings.TrimSpace(m[1])

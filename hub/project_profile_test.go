@@ -6,6 +6,27 @@ import (
 	"testing"
 )
 
+func TestLoadProjectProfileBlaziumFile(t *testing.T) {
+	dir := t.TempDir()
+	blazium := `; Engine configuration file.
+config_version=5
+
+[application]
+
+config/name="BlaziumDemo"
+`
+	if err := os.WriteFile(filepath.Join(dir, "project.blazium"), []byte(blazium), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p, err := LoadProjectProfile(filepath.Join(dir, "project.blazium"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Name != "BlaziumDemo" {
+		t.Fatalf("name %q", p.Name)
+	}
+}
+
 func TestLoadProjectProfileJustAMCP(t *testing.T) {
 	dir := t.TempDir()
 	godot := `; Engine configuration file.

@@ -97,10 +97,7 @@ func NewCommand(opts Options) *cobra.Command {
 		if projectRef != "" {
 			path := projectRef
 			if abs, err := filepath.Abs(projectRef); err == nil {
-				if st, err := os.Stat(filepath.Join(abs, "project.godot")); err == nil && !st.IsDir() {
-					// shouldn't happen
-					_ = st
-				} else if _, err := os.Stat(filepath.Join(abs, "project.godot")); err == nil {
+				if projectSettingsFile(abs) != "" {
 					path = abs
 				}
 			}
@@ -407,7 +404,7 @@ func NewCommand(opts Options) *cobra.Command {
 	var projectPort int
 	enableCmd := &cobra.Command{
 		Use:   "enable",
-		Short: "Enable remote_control in a Blazium project (project.godot settings)",
+		Short: "Enable remote_control in a Blazium project (project.blazium or project.godot settings)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if projectPath == "" {
 				projectPath = "."
@@ -425,7 +422,7 @@ func NewCommand(opts Options) *cobra.Command {
 			return output.Write(format(), msg)
 		},
 	}
-	enableCmd.Flags().StringVar(&projectPath, "path", ".", "Project directory containing project.godot")
+	enableCmd.Flags().StringVar(&projectPath, "path", ".", "Project directory containing project.blazium or project.godot")
 	enableCmd.Flags().BoolVar(&allowEval, "allow-eval", false, "Also enable blazium/remote_control/allow_eval")
 	enableCmd.Flags().IntVar(&projectPort, "project-port", 6507, "Port written to project settings")
 
@@ -836,11 +833,25 @@ func redactToken(token string) string {
 	return token[:4] + "…" + token[len(token)-4:]
 }
 
+func projectSettingsFile(dir string) string {
+	for _, name := range []string{"project.blazium", "project.godot"} {
+		st, err := os.Stat(filepath.Join(dir, name))
+		if err == nil && !st.IsDir() {
+			return name
+		}
+	}
+	return ""
+}
+
 func enableProject(projectDir string, port int, allowEval bool) error {
-	godot := filepath.Join(projectDir, "project.godot")
-	data, err := os.ReadFile(godot)
+	name := projectSettingsFile(projectDir)
+	if name == "" {
+		return fmt.Errorf("missing project.blazium or project.godot in %s", projectDir)
+	}
+	cfg := filepath.Join(projectDir, name)
+	data, err := os.ReadFile(cfg)
 	if err != nil {
-		return fmt.Errorf("read project.godot: %w", err)
+		return fmt.Errorf("read %s: %w", name, err)
 	}
 	text := string(data)
 	settings := fmt.Sprintf(
@@ -861,7 +872,7 @@ func enableProject(projectDir string, port int, allowEval bool) error {
 		}
 		text += "\n[blazium]\n\n" + settings
 	}
-	return os.WriteFile(godot, []byte(text), 0o644)
+	return os.WriteFile(cfg, []byte(text), 0o644)
 }
 
 func replaceOrAppendSetting(text, key, value string) string {

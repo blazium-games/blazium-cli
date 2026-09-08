@@ -7,6 +7,35 @@ import (
 	"strings"
 )
 
+const (
+	ProjectFileBlazium = "project.blazium"
+	ProjectFileGodot   = "project.godot"
+)
+
+// ProjectSettingsFile returns project.blazium or project.godot in dir (prefer blazium).
+func ProjectSettingsFile(dir string) string {
+	for _, name := range []string{ProjectFileBlazium, ProjectFileGodot} {
+		st, err := os.Stat(filepath.Join(dir, name))
+		if err == nil && !st.IsDir() {
+			return name
+		}
+	}
+	return ""
+}
+
+// ReadProjectSettingsText reads the preferred project settings file in dir.
+func ReadProjectSettingsText(dir string) (string, error) {
+	name := ProjectSettingsFile(dir)
+	if name == "" {
+		return "", fmt.Errorf("missing project.blazium or project.godot in %s", dir)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, name))
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", name, err)
+	}
+	return string(data), nil
+}
+
 // FindProject returns a project by absolute path or name (case-insensitive).
 func (f *File) FindProject(pathOrName string) *Project {
 	want := strings.TrimSpace(pathOrName)
@@ -26,13 +55,10 @@ func (f *File) FindProject(pathOrName string) *Project {
 	return nil
 }
 
-// AddProject registers a project directory that contains project.godot.
+// AddProject registers a project directory that contains project.blazium or project.godot.
 func (f *File) AddProject(path string) (Project, error) {
-	abs, err := filepath.Abs(path)
+	abs, err := NormalizeProjectDir(path)
 	if err != nil {
-		return Project{}, err
-	}
-	if err := ValidateProjectDir(abs); err != nil {
 		return Project{}, err
 	}
 	name := projectDisplayName(abs)
@@ -77,7 +103,35 @@ func (f *File) TouchProjectLastOpened(path string) error {
 	return nil
 }
 
-// ValidateProjectDir ensures path is a directory containing project.godot.
+// IsProjectSettingsFile reports whether name is project.blazium or project.godot.
+func IsProjectSettingsFile(name string) bool {
+	base := filepath.Base(name)
+	return base == ProjectFileBlazium || base == ProjectFileGodot
+}
+
+// NormalizeProjectDir accepts a project folder or a project.blazium/project.godot file.
+func NormalizeProjectDir(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	st, err := os.Stat(abs)
+	if err != nil {
+		return "", err
+	}
+	if !st.IsDir() {
+		if !IsProjectSettingsFile(abs) {
+			return "", fmt.Errorf("not a directory: %s", path)
+		}
+		abs = filepath.Dir(abs)
+	}
+	if err := ValidateProjectDir(abs); err != nil {
+		return "", err
+	}
+	return abs, nil
+}
+
+// ValidateProjectDir ensures path is a directory containing project.blazium or project.godot.
 func ValidateProjectDir(path string) error {
 	st, err := os.Stat(path)
 	if err != nil {
@@ -86,18 +140,16 @@ func ValidateProjectDir(path string) error {
 	if !st.IsDir() {
 		return fmt.Errorf("not a directory: %s", path)
 	}
-	godot := filepath.Join(path, "project.godot")
-	if _, err := os.Stat(godot); err != nil {
-		return fmt.Errorf("missing project.godot in %s", path)
+	if ProjectSettingsFile(path) == "" {
+		return fmt.Errorf("missing project.blazium or project.godot in %s", path)
 	}
 	return nil
 }
 
 func projectDisplayName(abs string) string {
-	cfg := filepath.Join(abs, "project.godot")
-	data, err := os.ReadFile(cfg)
+	text, err := ReadProjectSettingsText(abs)
 	if err == nil {
-		if name := parseGodotSetting(string(data), "config/name"); name != "" {
+		if name := parseGodotSetting(text, "config/name"); name != "" {
 			return strings.Trim(name, `"`)
 		}
 	}

@@ -1,9 +1,6 @@
 package hub
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -16,7 +13,7 @@ var (
 	reSettingString = regexp.MustCompile(`^([a-zA-Z0-9_/]+)\s*=\s*"([^"]*)"\s*$`)
 )
 
-// ProjectProfile summarizes project.godot identity and Blazium integrations.
+// ProjectProfile summarizes project.blazium / project.godot identity and Blazium integrations.
 type ProjectProfile struct {
 	Path          string               `json:"path"`
 	Name          string               `json:"name,omitempty"`
@@ -49,20 +46,16 @@ type RemoteControlProfile struct {
 	HasToken      bool   `json:"has_token"`
 }
 
-// LoadProjectProfile parses project.godot at projectPath.
+// LoadProjectProfile parses project.blazium or project.godot at projectPath.
 func LoadProjectProfile(projectPath string) (ProjectProfile, error) {
-	abs, err := filepath.Abs(projectPath)
+	abs, err := NormalizeProjectDir(projectPath)
 	if err != nil {
 		return ProjectProfile{}, err
 	}
-	if err := ValidateProjectDir(abs); err != nil {
+	text, err := ReadProjectSettingsText(abs)
+	if err != nil {
 		return ProjectProfile{}, err
 	}
-	data, err := os.ReadFile(filepath.Join(abs, "project.godot"))
-	if err != nil {
-		return ProjectProfile{}, fmt.Errorf("read project.godot: %w", err)
-	}
-	text := string(data)
 	raw := parseSectionSettings(text)
 
 	p := ProjectProfile{

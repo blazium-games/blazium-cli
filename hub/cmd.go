@@ -549,7 +549,7 @@ Unset policy defaults to latest release.`,
 		Long: `Launches the editor with remote_control enabled by default (unique port/token/instance id).
 
 Editor resolution order:
-  1. blazium/editor_version in project.godot
+  1. blazium/editor_version in project.blazium or project.godot
   2. Matching installed editor for config/features
   3. Default editor policy from hub.json (latest release unless configured)`,
 		Example: `  blazium-cli open ./MyProject
@@ -565,7 +565,7 @@ Editor resolution order:
 	loadCmd := &cobra.Command{
 		Use:   "load <project-path-or-name>",
 		Short: "Profile a project (JustAMCP/remote_control/etc.) and launch the editor",
-		Long: `Reads project.godot for JustAMCP, remote_control, and editor settings, then launches
+		Long: `Reads project.blazium or project.godot for JustAMCP, remote_control, and editor settings, then launches
 the same way as open — allocating unique ports/tokens and binding a short instance id
 after remote_control is ready.`,
 		Example: `  blazium-cli load ./MyProject

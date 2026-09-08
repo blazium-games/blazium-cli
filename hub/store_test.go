@@ -74,6 +74,70 @@ func TestEditorsAddDefaultRemove(t *testing.T) {
 	}
 }
 
+func TestProjectSettingsFilePrefersBlazium(t *testing.T) {
+	dir := t.TempDir()
+	if got := ProjectSettingsFile(dir); got != "" {
+		t.Fatalf("empty dir: %q", got)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ProjectFileGodot), []byte("config/name=\"G\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := ProjectSettingsFile(dir); got != ProjectFileGodot {
+		t.Fatalf("godot only: %q", got)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ProjectFileBlazium), []byte("config/name=\"B\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := ProjectSettingsFile(dir); got != ProjectFileBlazium {
+		t.Fatalf("prefer blazium: %q", got)
+	}
+	absGodot, err := filepath.Abs(filepath.Join(dir, ProjectFileGodot))
+	if err != nil {
+		t.Fatal(err)
+	}
+	norm, err := NormalizeProjectDir(absGodot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !samePath(norm, want) {
+		t.Fatalf("normalize file: %q want %q", norm, want)
+	}
+}
+
+func TestProjectsAddBlaziumOnly(t *testing.T) {
+	withTempHub(t)
+	proj := filepath.Join(t.TempDir(), "BlaziumGame")
+	if err := os.MkdirAll(proj, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := filepath.Join(proj, ProjectFileBlazium)
+	if err := os.WriteFile(cfg, []byte("config/name=\"BlaziumGame\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := f.AddProject(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Name != "BlaziumGame" {
+		t.Fatalf("name %q", p.Name)
+	}
+	want, err := filepath.Abs(proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !samePath(p.Path, want) {
+		t.Fatalf("path %q want %q", p.Path, want)
+	}
+}
+
 func TestProjectsAddRemove(t *testing.T) {
 	withTempHub(t)
 	proj := filepath.Join(t.TempDir(), "Game")
