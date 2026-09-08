@@ -2,6 +2,7 @@ package update
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -76,6 +77,65 @@ func TestCheckCrashReporterWithMock(t *testing.T) {
 	}
 	if st2.CurrentVersion != "1.2.0" {
 		t.Fatalf("current=%s", st2.CurrentVersion)
+	}
+}
+
+func TestNormalizeSidecarVersion(t *testing.T) {
+	if got := normalizeSidecarVersion("0.1.2.0\n"); got != "0.1.2" {
+		t.Fatalf("four-part: %q", got)
+	}
+	if got := normalizeSidecarVersion("  0.1.2  "); got != "0.1.2" {
+		t.Fatalf("trim: %q", got)
+	}
+	if got := normalizeSidecarVersion(crashReporterVersionPrefix + "0.1.2.0"); got != "0.1.2" {
+		t.Fatalf("prefix: %q", got)
+	}
+}
+
+func TestParseCrashReporterVersionOutput(t *testing.T) {
+	out := "Godot Engine v4.5\n" + crashReporterVersionPrefix + "0.1.2\nmore\n"
+	if got := parseCrashReporterVersionOutput(out); got != "0.1.2" {
+		t.Fatalf("got %q", got)
+	}
+	if parseCrashReporterVersionOutput("no marker") != "" {
+		t.Fatal("expected empty")
+	}
+}
+
+func TestReadWindowsProductVersion(t *testing.T) {
+	buf := make([]byte, 64)
+	copy(buf[8:], []byte{0xBD, 0x04, 0xEF, 0xFE})
+	// FileVersionMS = 0x00010002 -> 1.2, FileVersionLS = 0x00030000 -> 3.0
+	binary.LittleEndian.PutUint32(buf[16:], 0x00010002)
+	binary.LittleEndian.PutUint32(buf[20:], 0x00030000)
+	dest := filepath.Join(t.TempDir(), "fake.exe")
+	if err := os.WriteFile(dest, buf, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := readWindowsProductVersion(dest)
+	if got != "1.2.3.0" {
+		t.Fatalf("got %q", got)
+	}
+	if normalizeSidecarVersion(got) != "1.2.3" {
+		t.Fatalf("normalized %q", normalizeSidecarVersion(got))
+	}
+}
+
+func TestResolveCrashReporterCurrentFromQuery(t *testing.T) {
+	orig := crashReporterVersionQuery
+	t.Cleanup(func() { crashReporterVersionQuery = orig })
+	crashReporterVersionQuery = func(string) string { return "0.1.2" }
+	doc, err := ParseHubManifest(crashReporterManifestJSON("0.1.2", runtime.GOOS, runtimeArch(), "https://cdn.example/cr", "aa", 4))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(t.TempDir(), "crash_reporter")
+	if err := os.WriteFile(dest, []byte("unsigned-hub-copy"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := resolveCrashReporterCurrent(dest, doc)
+	if got != "0.1.2" {
+		t.Fatalf("current=%s", got)
 	}
 }
 

@@ -1,20 +1,30 @@
 package update
 
 import (
+	"bytes"
+	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/blazium-games/blazium-cli/cdn"
 	"github.com/blazium-games/blazium-cli/manifest"
 	"github.com/blazium-games/blazium-cli/upgrade"
 )
+
+const crashReporterVersionPrefix = "CRASH_REPORTER_VERSION="
+
+// crashReporterVersionQuery is overridable for tests.
+var crashReporterVersionQuery = queryCrashReporterAppVersion
 
 // CrashReporterPlan is a resolved Hub sidecar download.
 type CrashReporterPlan struct {
@@ -86,15 +96,82 @@ func checkCrashReporter(installRoot string) ProductStatus {
 
 func resolveCrashReporterCurrent(dest string, doc manifest.Document) string {
 	if data, err := os.ReadFile(crashReporterVersionPath(dest)); err == nil {
-		if v := strings.TrimSpace(string(data)); v != "" {
+		if v := normalizeSidecarVersion(string(data)); v != "" {
 			return v
 		}
 	}
-	sum, err := fileSHA256(dest)
+	if sum, err := fileSHA256(dest); err == nil {
+		if v := versionForSidecarSHA(doc, sum); v != "" {
+			return v
+		}
+	}
+	if v := normalizeSidecarVersion(readWindowsProductVersion(dest)); v != "" {
+		return v
+	}
+	return normalizeSidecarVersion(crashReporterVersionQuery(dest))
+}
+
+func normalizeSidecarVersion(raw string) string {
+	v := strings.TrimSpace(raw)
+	if i := strings.Index(v, crashReporterVersionPrefix); i >= 0 {
+		v = strings.TrimSpace(v[i+len(crashReporterVersionPrefix):])
+		if nl := strings.IndexAny(v, "\r\n"); nl >= 0 {
+			v = strings.TrimSpace(v[:nl])
+		}
+	}
+	if v == "" {
+		return ""
+	}
+	parts := strings.Split(v, ".")
+	if len(parts) == 4 && parts[3] == "0" {
+		v = strings.Join(parts[:3], ".")
+	}
+	return v
+}
+
+func parseCrashReporterVersionOutput(out string) string {
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, crashReporterVersionPrefix) {
+			return normalizeSidecarVersion(line)
+		}
+	}
+	return ""
+}
+
+func queryCrashReporterAppVersion(dest string) string {
+	if dest == "" {
+		return ""
+	}
+	if _, err := os.Stat(dest); err != nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, dest, "--headless", "--app-version", "--quit")
+	out, err := cmd.Output()
 	if err != nil {
 		return ""
 	}
-	return versionForSidecarSHA(doc, sum)
+	return parseCrashReporterVersionOutput(string(out))
+}
+
+// readWindowsProductVersion finds VS_FIXEDFILEINFO (0xFEEF04BD) in a PE.
+func readWindowsProductVersion(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) < 52 {
+		return ""
+	}
+	sig := []byte{0xBD, 0x04, 0xEF, 0xFE}
+	for i := 0; i+52 <= len(data); i++ {
+		if !bytes.Equal(data[i:i+4], sig) {
+			continue
+		}
+		ms := binary.LittleEndian.Uint32(data[i+8 : i+12])
+		ls := binary.LittleEndian.Uint32(data[i+12 : i+16])
+		return fmt.Sprintf("%d.%d.%d.%d", ms>>16, ms&0xffff, ls>>16, ls&0xffff)
+	}
+	return ""
 }
 
 func versionForSidecarSHA(doc manifest.Document, sha string) string {
