@@ -120,7 +120,7 @@ func RunInstall(p InstallParams) (map[string]any, error) {
 }
 
 // LaunchProject resolves the project/editor and launches the editor (open or load profile).
-func LaunchProject(projectArg string, fullProfile bool, quiet bool, crashReporterPath string) (map[string]any, error) {
+func LaunchProject(projectArg string, fullProfile bool, quiet bool, crashReporterPath string, skipCrashReporter bool, analyticsConsent, analyticsMode string) (map[string]any, error) {
 	f, err := Load()
 	if err != nil {
 		return nil, err
@@ -150,6 +150,9 @@ func LaunchProject(projectArg string, fullProfile bool, quiet bool, crashReporte
 		Profile:           profile,
 		Quiet:             quiet,
 		CrashReporterPath: crashReporterPath,
+		SkipCrashReporter: skipCrashReporter,
+		AnalyticsConsent:  analyticsConsent,
+		AnalyticsMode:     analyticsMode,
 	})
 	if err != nil {
 		return nil, err
@@ -203,6 +206,9 @@ type HandleURIOptions struct {
 	DefaultRelease    string
 	Quiet             bool
 	CrashReporterPath string
+	SkipCrashReporter bool
+	AnalyticsConsent  string
+	AnalyticsMode     string
 }
 
 // HandleURI parses and executes a blazium:// deep link.
@@ -330,7 +336,7 @@ func handleURIProject(opts HandleURIOptions, parsed ParsedURI) (map[string]any, 
 	}
 
 	fullProfile := parsed.Action == "load"
-	launchOut, err := LaunchProject(projectPath, fullProfile, opts.Quiet, opts.CrashReporterPath)
+	launchOut, err := LaunchProject(projectPath, fullProfile, opts.Quiet, opts.CrashReporterPath, opts.SkipCrashReporter, opts.AnalyticsConsent, opts.AnalyticsMode)
 	if err != nil {
 		return nil, err
 	}

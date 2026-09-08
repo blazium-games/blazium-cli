@@ -101,6 +101,77 @@ func TestResolveCrashReporterPathExplicit(t *testing.T) {
 	}
 }
 
+func TestNormalizeAnalyticsConsent(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+		err  bool
+	}{
+		{"", "", false},
+		{"unset", "", false},
+		{"accepted", "accepted", false},
+		{"ACCEPT", "accepted", false},
+		{"true", "accepted", false},
+		{"declined", "declined", false},
+		{"0", "declined", false},
+		{"maybe", "", true},
+	}
+	for _, c := range cases {
+		got, err := NormalizeAnalyticsConsent(c.in)
+		if c.err {
+			if err == nil {
+				t.Fatalf("consent %q: want error", c.in)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("consent %q: %v", c.in, err)
+		}
+		if got != c.want {
+			t.Fatalf("consent %q: got %q want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestNormalizeAnalyticsMode(t *testing.T) {
+	got, err := NormalizeAnalyticsMode("ANONYMOUS")
+	if err != nil || got != "anonymous" {
+		t.Fatalf("anonymous: %q %v", got, err)
+	}
+	got, err = NormalizeAnalyticsMode("identified")
+	if err != nil || got != "identified" {
+		t.Fatalf("identified: %q %v", got, err)
+	}
+	if _, err := NormalizeAnalyticsMode("secret"); err == nil {
+		t.Fatal("secret mode should error")
+	}
+	got, err = NormalizeAnalyticsMode("")
+	if err != nil || got != "" {
+		t.Fatalf("empty: %q %v", got, err)
+	}
+}
+
+func TestAppendAnalyticsArgs(t *testing.T) {
+	got := AppendAnalyticsArgs([]string{"--path", "/proj"}, "accepted", "anonymous")
+	want := []string{"--path", "/proj", "--analytics=accepted", "--analytics-mode=anonymous"}
+	if len(got) != len(want) {
+		t.Fatalf("args=%v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("args[%d]=%q want %q", i, got[i], want[i])
+		}
+	}
+	got = AppendAnalyticsArgs([]string{"--path", "/proj"}, "declined", "")
+	if len(got) != 3 || got[2] != "--analytics=declined" {
+		t.Fatalf("declined args=%v", got)
+	}
+	got = AppendAnalyticsArgs([]string{"--path", "/proj"}, "", "")
+	if len(got) != 2 {
+		t.Fatalf("unset should not add flags: %v", got)
+	}
+}
+
 func TestResolveCrashReporterPathFallback(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("BLAZIUM", root)

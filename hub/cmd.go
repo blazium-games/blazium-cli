@@ -34,14 +34,37 @@ func AddCommands(root *cobra.Command, opts Options) {
 	}
 
 	var (
-		channel       string
-		platform      string
-		arch          string
-		mono          bool
-		withTpl       bool
-		yes           bool
-		crashReporter string
+		channel         string
+		platform        string
+		arch            string
+		mono            bool
+		withTpl         bool
+		yes             bool
+		crashReporter   string
+		analytics       string
+		analyticsMode   string
+		noCrashReporter bool
 	)
+
+	const crashReporterFlagHelp = "Editor sidecar crash reporter executable (omitted: Hub sidecar under BLAZIUM if present)"
+	launchFlags := func(cmd *cobra.Command) {
+		cmd.Flags().StringVar(&crashReporter, "crash-reporter", "", crashReporterFlagHelp)
+		cmd.Flags().BoolVar(&noCrashReporter, "no-crash-reporter", false, "Do not attach a crash reporter sidecar (overrides --crash-reporter and the Hub default)")
+		cmd.Flags().StringVar(&analytics, "analytics", "", "Editor analytics consent: accepted|declined (omitted: editor keeps its own setting)")
+		cmd.Flags().StringVar(&analyticsMode, "analytics-mode", "", "Editor analytics mode: anonymous|identified")
+	}
+
+	resolveLaunchPrivacy := func() (consent, mode string, err error) {
+		consent, err = NormalizeAnalyticsConsent(analytics)
+		if err != nil {
+			return "", "", err
+		}
+		mode, err = NormalizeAnalyticsMode(analyticsMode)
+		if err != nil {
+			return "", "", err
+		}
+		return consent, mode, nil
+	}
 
 	installCmd := &cobra.Command{
 		Use:     "install [version]",
@@ -467,6 +490,10 @@ Unset policy defaults to latest release.`,
 		if err := Save(f); err != nil {
 			return err
 		}
+		consent, mode, err := resolveLaunchPrivacy()
+		if err != nil {
+			return err
+		}
 		result, err := LaunchEditor(LaunchOptions{
 			EditorPath:        ed.Path,
 			EditorVersion:     ed.Version,
@@ -474,6 +501,9 @@ Unset policy defaults to latest release.`,
 			Profile:           profile,
 			Quiet:             quiet(),
 			CrashReporterPath: crashReporter,
+			SkipCrashReporter: noCrashReporter,
+			AnalyticsConsent:  consent,
+			AnalyticsMode:     mode,
 		})
 		if err != nil {
 			return err
@@ -530,8 +560,7 @@ Editor resolution order:
 		},
 	}
 
-	crashReporterFlagHelp := "Editor sidecar crash reporter executable (omitted: Hub sidecar under BLAZIUM if present)"
-	openCmd.Flags().StringVar(&crashReporter, "crash-reporter", "", crashReporterFlagHelp)
+	launchFlags(openCmd)
 
 	loadCmd := &cobra.Command{
 		Use:   "load <project-path-or-name>",
@@ -546,7 +575,7 @@ after remote_control is ready.`,
 			return runLaunch(args[0], true)
 		},
 	}
-	loadCmd.Flags().StringVar(&crashReporter, "crash-reporter", "", crashReporterFlagHelp)
+	launchFlags(loadCmd)
 
 	handleURICmd := &cobra.Command{
 		Use:   "handle-uri <uri>",
@@ -566,11 +595,18 @@ Supported forms:
   blazium-cli handle-uri blazium://hub`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			consent, mode, err := resolveLaunchPrivacy()
+			if err != nil {
+				return err
+			}
 			out, err := HandleURI(HandleURIOptions{
 				URI:               args[0],
 				DefaultRelease:    opts.DefaultRelease,
 				Quiet:             quiet(),
 				CrashReporterPath: crashReporter,
+				SkipCrashReporter: noCrashReporter,
+				AnalyticsConsent:  consent,
+				AnalyticsMode:     mode,
 			})
 			if err != nil {
 				return err
@@ -578,7 +614,7 @@ Supported forms:
 			return output.Write(format(), out)
 		},
 	}
-	handleURICmd.Flags().StringVar(&crashReporter, "crash-reporter", "", crashReporterFlagHelp)
+	launchFlags(handleURICmd)
 
 	hubRemotePath := ""
 	hubRemoteCmd := &cobra.Command{

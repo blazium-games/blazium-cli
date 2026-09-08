@@ -21,6 +21,9 @@ type LaunchOptions struct {
 	Profile           ProjectProfile
 	Quiet             bool
 	CrashReporterPath string
+	SkipCrashReporter bool
+	AnalyticsConsent  string
+	AnalyticsMode     string
 }
 
 // LaunchResult describes a launched editor instance.
@@ -95,6 +98,48 @@ func BuildEditorArgs(projectPath string, remotePort int, remoteToken string, ena
 	return args
 }
 
+// NormalizeAnalyticsConsent maps Hub/CLI consent values to accepted|declined.
+// Empty or "unset" means the editor should keep its own consent state.
+func NormalizeAnalyticsConsent(s string) (string, error) {
+	v := strings.ToLower(strings.TrimSpace(s))
+	switch v {
+	case "", "unset":
+		return "", nil
+	case "accepted", "accept", "1", "true", "yes":
+		return "accepted", nil
+	case "declined", "decline", "0", "false", "no":
+		return "declined", nil
+	default:
+		return "", fmt.Errorf("invalid --analytics %q (want accepted|declined)", s)
+	}
+}
+
+// NormalizeAnalyticsMode maps Hub/CLI mode values to anonymous|identified.
+func NormalizeAnalyticsMode(s string) (string, error) {
+	v := strings.ToLower(strings.TrimSpace(s))
+	switch v {
+	case "":
+		return "", nil
+	case "anonymous":
+		return "anonymous", nil
+	case "identified":
+		return "identified", nil
+	default:
+		return "", fmt.Errorf("invalid --analytics-mode %q (want anonymous|identified)", s)
+	}
+}
+
+// AppendAnalyticsArgs adds engine --analytics= and --analytics-mode= tokens.
+func AppendAnalyticsArgs(args []string, consent, mode string) []string {
+	if c := strings.TrimSpace(consent); c != "" {
+		args = append(args, "--analytics="+c)
+	}
+	if m := strings.TrimSpace(mode); m != "" {
+		args = append(args, "--analytics-mode="+m)
+	}
+	return args
+}
+
 // LaunchEditor starts the editor, registers the instance, waits for health, and POSTs instance id.
 func LaunchEditor(opts LaunchOptions) (LaunchResult, error) {
 	output.Quiet = opts.Quiet
@@ -138,7 +183,12 @@ func LaunchEditor(opts LaunchOptions) (LaunchResult, error) {
 		}
 	}
 
-	args := BuildEditorArgs(opts.ProjectPath, remotePort, token, enableRemote, mcpPort, enableMCP, ResolveCrashReporterPath(opts.CrashReporterPath))
+	crashPath := ""
+	if !opts.SkipCrashReporter {
+		crashPath = ResolveCrashReporterPath(opts.CrashReporterPath)
+	}
+	args := BuildEditorArgs(opts.ProjectPath, remotePort, token, enableRemote, mcpPort, enableMCP, crashPath)
+	args = AppendAnalyticsArgs(args, opts.AnalyticsConsent, opts.AnalyticsMode)
 	pid, err := startEditorProcess(opts.EditorPath, args)
 	if err != nil {
 		return LaunchResult{}, err
