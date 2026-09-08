@@ -173,12 +173,44 @@ type flatVersionEntry struct {
 	Version    string `json:"version"`
 }
 
-// ResolveLatestChannel returns the current version for a channel from CDN latest.json.
-func ResolveLatestChannel(channel string) (string, error) {
+// CatalogChannelCandidates returns CDN folder names for a channel.
+// Hub uses "prerelease"; Cerebro historically published "pre-release".
+func CatalogChannelCandidates(channel string) []string {
 	ch := strings.ToLower(strings.TrimSpace(channel))
 	if ch == "" {
 		ch = "nightly"
 	}
+	switch ch {
+	case "pre", "preview", "prerelease":
+		return []string{"prerelease", "pre-release"}
+	case "pre-release":
+		return []string{"pre-release", "prerelease"}
+	default:
+		return []string{ch}
+	}
+}
+
+// ResolveLatestChannel returns the current version for a channel from CDN latest.json.
+func ResolveLatestChannel(channel string) (string, error) {
+	var last error
+	for _, ch := range CatalogChannelCandidates(channel) {
+		v, err := resolveLatestChannelOnce(ch)
+		if err == nil && strings.TrimSpace(v) != "" {
+			return v, nil
+		}
+		if err != nil {
+			last = err
+			continue
+		}
+		last = fmt.Errorf("empty %s version", ch)
+	}
+	if last == nil {
+		last = fmt.Errorf("no versions for %s", channel)
+	}
+	return "", last
+}
+
+func resolveLatestChannelOnce(ch string) (string, error) {
 	url := fmt.Sprintf("%s/catalog/versions/%s/latest.json", cdnPublicBase, ch)
 	body, err := HTTPGet(url)
 	if err != nil {

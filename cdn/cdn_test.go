@@ -1,6 +1,9 @@
 package cdn
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func TestFilenameMatchesEditorWindows64bit(t *testing.T) {
 	name := "BlaziumEditor_v0.6.714_windows.64bit.zip"
@@ -93,6 +96,41 @@ func TestResolveInstallVersionAliases(t *testing.T) {
 	v, night, err = ResolveInstallVersion("0.6.751", "nightly", "")
 	if err != nil || !night || v != "0.6.751" {
 		t.Fatalf("concrete nightly: v=%q night=%v err=%v", v, night, err)
+	}
+}
+
+func TestCatalogChannelCandidates(t *testing.T) {
+	got := CatalogChannelCandidates("prerelease")
+	if len(got) != 2 || got[0] != "prerelease" || got[1] != "pre-release" {
+		t.Fatalf("prerelease: %v", got)
+	}
+	got = CatalogChannelCandidates("pre-release")
+	if len(got) != 2 || got[0] != "pre-release" || got[1] != "prerelease" {
+		t.Fatalf("pre-release: %v", got)
+	}
+}
+
+func TestResolveLatestChannelPrereleaseFallback(t *testing.T) {
+	old := HTTPGet
+	defer func() { HTTPGet = old }()
+	HTTPGet = func(url string) ([]byte, error) {
+		switch url {
+		case "https://cdn.blazium.app/catalog/versions/prerelease/latest.json",
+			"https://cdn.blazium.app/catalog/versions/prerelease.json":
+			return nil, fmt.Errorf("HTTP 404 Not Found")
+		case "https://cdn.blazium.app/catalog/versions/pre-release/latest.json":
+			return []byte(`{"version":"0.6.100","channel":"pre-release"}`), nil
+		default:
+			t.Fatalf("unexpected url %s", url)
+			return nil, nil
+		}
+	}
+	got, err := ResolveLatestChannel("prerelease")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "0.6.100" {
+		t.Fatalf("got %q", got)
 	}
 }
 
