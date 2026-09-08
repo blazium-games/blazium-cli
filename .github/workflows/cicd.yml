@@ -1,12 +1,14 @@
 name: Build and Sign Commandline
 
+# Pull requests: test and cross-compile only (no signing, CDN, or release).
+# Push to main/master and workflow_dispatch: sign, publish, and release.
+
 on:
   push:
     branches:
       - main
       - master
   pull_request:
-    types: [closed]
     branches:
       - main
       - master
@@ -111,17 +113,6 @@ jobs:
             sudo apt-get install -y gcc-multilib g++-multilib
           fi
 
-      - name: Install GPG
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gnupg
-
-      - name: Import GPG key
-        env:
-          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
-        run: |
-          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
-
       - name: Run application tests
         run: go test ./...
 
@@ -138,6 +129,45 @@ jobs:
           fi
           go build -o ./build/${{ matrix.output }} .
 
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.goos }}-${{ matrix.hub_arch }}
+          path: build/${{ matrix.output }}
+
+  # Signing, CDN, and Cerebro run only on merge/push to default or workflow_dispatch.
+  # Kept in a separate job so pull_request builds never pull the Windows signer image.
+  publish:
+    needs: [resolve-version, build]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            hub_arch: x86_64
+            output: blazium-cli
+          - goos: linux
+            hub_arch: x86_32
+            output: blazium-cli
+          - goos: windows
+            hub_arch: x86_64
+            output: blazium-cli.exe
+          - goos: windows
+            hub_arch: x86_32
+            output: blazium-cli.exe
+          - goos: darwin
+            hub_arch: x86_64
+            output: blazium-cli
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-${{ matrix.goos }}-${{ matrix.hub_arch }}
+          path: build
+
       - name: Compute sha256
         id: digest
         run: |
@@ -145,6 +175,19 @@ jobs:
           SIZE=$(stat -c%s build/${{ matrix.output }})
           echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
           echo "size=$SIZE" >> "$GITHUB_OUTPUT"
+
+      - name: Install GPG
+        if: ${{ matrix.goos != 'windows' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gnupg
+
+      - name: Import GPG key
+        if: ${{ matrix.goos != 'windows' }}
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
 
       - name: GPG Signing build
         if: ${{ matrix.goos != 'windows' }}
@@ -284,7 +327,7 @@ jobs:
           )"
 
   manifest:
-    needs: [resolve-version, build]
+    needs: [resolve-version, publish]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
