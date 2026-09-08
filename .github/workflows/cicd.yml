@@ -173,7 +173,7 @@ jobs:
         if: ${{ matrix.goos == 'windows' }}
         run: mkdir -p signed
 
-      - uses: bioblaze/sslcom-code-signer@v5
+      - uses: bioblaze/sslcom-code-signer@v6
         name: Windows Signing
         if: ${{ matrix.goos == 'windows' }}
         continue-on-error: true
