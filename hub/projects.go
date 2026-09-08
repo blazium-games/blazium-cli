@@ -132,6 +132,33 @@ func NormalizeProjectDir(path string) (string, error) {
 }
 
 // ValidateProjectDir ensures path is a directory containing project.blazium or project.godot.
+// CreateProjectDir writes a minimal project.blazium in dir. Fails if a project file already exists.
+func CreateProjectDir(dir, name string) (string, error) {
+	abs, err := filepath.Abs(strings.TrimSpace(dir))
+	if err != nil {
+		return "", err
+	}
+	if st, err := os.Stat(abs); err == nil && !st.IsDir() {
+		return "", fmt.Errorf("not a directory: %s", dir)
+	}
+	if ProjectSettingsFile(abs) != "" {
+		return "", fmt.Errorf("already a project: %s", abs)
+	}
+	if err := os.MkdirAll(abs, 0o755); err != nil {
+		return "", err
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = filepath.Base(abs)
+	}
+	name = strings.ReplaceAll(name, `"`, "")
+	body := fmt.Sprintf("; Engine configuration file.\nconfig_version=5\n\n[application]\n\nconfig/name=\"%s\"\nconfig/features=PackedStringArray(\"4.5\", \"Forward Plus\")\n\n[rendering]\n\nrenderer/rendering_method=\"forward_plus\"\n", name)
+	if err := os.WriteFile(filepath.Join(abs, ProjectFileBlazium), []byte(body), 0o644); err != nil {
+		return "", err
+	}
+	return abs, nil
+}
+
 func ValidateProjectDir(path string) error {
 	st, err := os.Stat(path)
 	if err != nil {

@@ -2,6 +2,7 @@ package hub
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -205,6 +206,112 @@ func InferVersionFromPath(path string) string {
 		}
 	}
 	return ""
+}
+
+// RelocateEditors moves editor trees that live under oldRoot into newRoot and rewrites Dir/Path.
+func (f *File) RelocateEditors(oldRoot, newRoot string) (moved []string, err error) {
+	oldAbs, err := filepath.Abs(strings.TrimSpace(oldRoot))
+	if err != nil {
+		return nil, err
+	}
+	newAbs, err := filepath.Abs(strings.TrimSpace(newRoot))
+	if err != nil {
+		return nil, err
+	}
+	if samePath(oldAbs, newAbs) {
+		return nil, nil
+	}
+	for i := range f.Editors {
+		ed := &f.Editors[i]
+		relDir, ok := relUnderRoot(ed.Dir, oldAbs)
+		if !ok {
+			continue
+		}
+		destDir := filepath.Join(newAbs, relDir)
+		if err := moveDir(ed.Dir, destDir); err != nil {
+			return moved, fmt.Errorf("move %s -> %s: %w", ed.Dir, destDir, err)
+		}
+		if relBin, ok := relUnderRoot(ed.Path, ed.Dir); ok {
+			ed.Path = filepath.Join(destDir, relBin)
+		} else if relBin, ok := relUnderRoot(ed.Path, oldAbs); ok {
+			ed.Path = filepath.Join(newAbs, relBin)
+		}
+		ed.Dir = destDir
+		moved = append(moved, ed.Version)
+	}
+	return moved, nil
+}
+
+func relUnderRoot(path, root string) (string, bool) {
+	abs, err := filepath.Abs(strings.TrimSpace(path))
+	if err != nil || abs == "" {
+		return "", false
+	}
+	rel, err := filepath.Rel(root, abs)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return "", false
+	}
+	return rel, true
+}
+
+func moveDir(from, to string) error {
+	from = filepath.Clean(from)
+	to = filepath.Clean(to)
+	if samePath(from, to) {
+		return nil
+	}
+	if _, err := os.Stat(from); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
+		return err
+	}
+	if err := os.Rename(from, to); err == nil {
+		return nil
+	}
+	if err := copyDir(from, to); err != nil {
+		_ = os.RemoveAll(to)
+		return err
+	}
+	return os.RemoveAll(from)
+}
+
+func copyDir(from, to string) error {
+	return filepath.Walk(from, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(from, path)
+		if err != nil {
+			return err
+		}
+		dest := filepath.Join(to, rel)
+		if info.IsDir() {
+			return os.MkdirAll(dest, info.Mode())
+		}
+		return copyFileMode(path, dest, info.Mode())
+	})
+}
+
+func copyFileMode(src, dst string, mode os.FileMode) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(out, in)
+	closeErr := out.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	return closeErr
 }
 
 func looksLikeVersion(s string) bool {

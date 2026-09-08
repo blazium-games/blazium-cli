@@ -255,6 +255,8 @@ func newApplyCommand(opts Options) *cobra.Command {
 func newReplaceBinCommand(opts Options) *cobra.Command {
 	var from string
 	var to string
+	var versionFile string
+	var version string
 	cmd := &cobra.Command{
 		Use:    "replace-bin",
 		Short:  "Replace a CLI binary from a local file (internal / elevated helper)",
@@ -262,33 +264,52 @@ func newReplaceBinCommand(opts Options) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			from = strings.TrimSpace(from)
 			to = strings.TrimSpace(to)
-			if from == "" || to == "" {
-				return fmt.Errorf("--from and --to are required")
+			versionFile = strings.TrimSpace(versionFile)
+			if from == "" && to == "" && versionFile == "" {
+				return fmt.Errorf("--from/--to or --version-file is required")
 			}
-			fromAbs, err := filepath.Abs(from)
-			if err != nil {
-				return err
+			result := map[string]any{"ok": true}
+			if from != "" || to != "" {
+				if from == "" || to == "" {
+					return fmt.Errorf("--from and --to are required together")
+				}
+				fromAbs, err := filepath.Abs(from)
+				if err != nil {
+					return err
+				}
+				toAbs, err := filepath.Abs(to)
+				if err != nil {
+					return err
+				}
+				if st, err := os.Stat(fromAbs); err != nil || st.IsDir() {
+					return fmt.Errorf("source binary not found: %s", fromAbs)
+				}
+				if err := upgrade.ReplaceExecutable(toAbs, fromAbs); err != nil {
+					return err
+				}
+				result["from"] = fromAbs
+				result["to"] = toAbs
 			}
-			toAbs, err := filepath.Abs(to)
-			if err != nil {
-				return err
+			if versionFile != "" {
+				verAbs, err := filepath.Abs(versionFile)
+				if err != nil {
+					return err
+				}
+				if err := os.MkdirAll(filepath.Dir(verAbs), 0o755); err != nil {
+					return err
+				}
+				if err := os.WriteFile(verAbs, []byte(version+"\n"), 0o644); err != nil {
+					return err
+				}
+				result["version_file"] = verAbs
+				result["version"] = version
 			}
-			if st, err := os.Stat(fromAbs); err != nil || st.IsDir() {
-				return fmt.Errorf("source binary not found: %s", fromAbs)
-			}
-			if err := upgrade.ReplaceExecutable(toAbs, fromAbs); err != nil {
-				return err
-			}
-			return output.Write(formatOf(opts), map[string]any{
-				"ok":   true,
-				"from": fromAbs,
-				"to":   toAbs,
-			})
+			return output.Write(formatOf(opts), result)
 		},
 	}
 	cmd.Flags().StringVar(&from, "from", "", "Downloaded CLI binary path")
 	cmd.Flags().StringVar(&to, "to", "", "Destination blazium-cli path")
-	_ = cmd.MarkFlagRequired("from")
-	_ = cmd.MarkFlagRequired("to")
+	cmd.Flags().StringVar(&versionFile, "version-file", "", "Optional sidecar version file to write after replace")
+	cmd.Flags().StringVar(&version, "version", "", "Contents written to --version-file")
 	return cmd
 }

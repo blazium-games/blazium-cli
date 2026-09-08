@@ -164,6 +164,79 @@ func TestProjectsAddRemove(t *testing.T) {
 	}
 }
 
+func TestRelocateEditorsRewritesPaths(t *testing.T) {
+	oldRoot := filepath.Join(t.TempDir(), "old")
+	newRoot := filepath.Join(t.TempDir(), "new")
+	edDir := filepath.Join(oldRoot, "release", "0.6.1")
+	bin := filepath.Join(edDir, "blazium.exe")
+	if err := os.MkdirAll(edDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bin, []byte("x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f := File{
+		InstallPath: oldRoot,
+		Editors: []Editor{{
+			Version: "0.6.1",
+			Dir:     edDir,
+			Path:    bin,
+			Channel: ChannelRelease,
+		}},
+	}
+	moved, err := f.RelocateEditors(oldRoot, newRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(moved) != 1 || moved[0] != "0.6.1" {
+		t.Fatalf("moved=%v", moved)
+	}
+	wantDir := filepath.Join(newRoot, "release", "0.6.1")
+	if !samePath(f.Editors[0].Dir, wantDir) {
+		t.Fatalf("dir %q want %q", f.Editors[0].Dir, wantDir)
+	}
+	wantBin := filepath.Join(wantDir, "blazium.exe")
+	if !samePath(f.Editors[0].Path, wantBin) {
+		t.Fatalf("path %q want %q", f.Editors[0].Path, wantBin)
+	}
+	if _, err := os.Stat(wantBin); err != nil {
+		t.Fatal(err)
+	}
+	moved2, err := f.RelocateEditors(newRoot, newRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(moved2) != 0 {
+		t.Fatalf("same-path move should be no-op: %v", moved2)
+	}
+}
+
+func TestCreateProjectDir(t *testing.T) {
+	withTempHub(t)
+	dir := filepath.Join(t.TempDir(), "fresh-game")
+	abs, err := CreateProjectDir(dir, "Fresh Game")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ProjectSettingsFile(abs) != ProjectFileBlazium {
+		t.Fatalf("missing project.blazium")
+	}
+	if _, err := CreateProjectDir(dir, "Again"); err == nil {
+		t.Fatal("expected reject existing project")
+	}
+	f, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := f.AddProject(abs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Name != "Fresh Game" {
+		t.Fatalf("name %q", p.Name)
+	}
+}
+
 func TestResolveEditorForProject(t *testing.T) {
 	withTempHub(t)
 	f := File{
