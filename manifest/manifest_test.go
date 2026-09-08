@@ -3,6 +3,7 @@ package manifest
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -166,6 +167,36 @@ func TestVersionedObjectURLs(t *testing.T) {
 		t.Fatalf("missing %s in %v", want, urls)
 	}
 	if VersionedObjectURLs(" ") != nil {
+		t.Fatal("expected nil for blank version")
+	}
+}
+
+func TestVersionedUploads(t *testing.T) {
+	t.Parallel()
+	uploads := VersionedUploads("0.1.6")
+	if len(uploads) != 8 {
+		t.Fatalf("uploads=%d", len(uploads))
+	}
+	wantKey := "cli/windows/x86_32/0.1.6/blazium-cli.exe"
+	found := false
+	for _, u := range uploads {
+		if u.RelPath == "windows/x86_32/blazium-cli.exe" {
+			if u.ObjectKey != wantKey {
+				t.Fatalf("object key=%q want %q", u.ObjectKey, wantKey)
+			}
+			if u.URL != CDNBaseURL+"/windows/x86_32/0.1.6/blazium-cli.exe" {
+				t.Fatalf("url=%q", u.URL)
+			}
+			found = true
+		}
+		if strings.Contains(u.ObjectKey, "//") {
+			t.Fatalf("double slash in %q", u.ObjectKey)
+		}
+	}
+	if !found {
+		t.Fatal("missing windows x86_32 upload")
+	}
+	if VersionedUploads(" ") != nil {
 		t.Fatal("expected nil for blank version")
 	}
 }

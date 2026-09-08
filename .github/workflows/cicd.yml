@@ -14,6 +14,10 @@ on:
       - master
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -168,14 +172,6 @@ jobs:
           name: build-${{ matrix.goos }}-${{ matrix.hub_arch }}
           path: build
 
-      - name: Compute sha256
-        id: digest
-        run: |
-          SHA256=$(sha256sum build/${{ matrix.output }} | awk '{print $1}')
-          SIZE=$(stat -c%s build/${{ matrix.output }})
-          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
-          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
-
       - name: Install GPG
         if: ${{ matrix.goos != 'windows' }}
         run: |
@@ -237,6 +233,20 @@ jobs:
 
           ls -la ./signed/
 
+      - name: Compute sha256
+        id: digest
+        run: |
+          set -euo pipefail
+          FILE="build/${{ matrix.output }}"
+          if [[ "${{ matrix.goos }}" == "windows" ]]; then
+            FILE="signed/${{ matrix.output }}"
+          fi
+          SHA256=$(sha256sum "$FILE" | awk '{print $1}')
+          SIZE=$(stat -c%s "$FILE")
+          echo "file=$FILE sha256=$SHA256 size=$SIZE"
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
+
       - name: Upload artifacts (unix)
         uses: actions/upload-artifact@v4
         if: ${{ matrix.goos != 'windows' }}
@@ -253,6 +263,9 @@ jobs:
           name: signed-windows-${{ matrix.hub_arch }}
           path: signed/blazium-cli.exe
 
+      # Unversioned "latest" only. Versioned objects are written by the manifest
+      # job from the exact files hashed into cli.json (Windows Authenticode
+      # output can differ from a parallel copy uploaded earlier in this job).
       - uses: BetaHuhn/do-spaces-action@v2
         with:
           access_key: ${{ secrets.DO_ACCESS_KEY }}
@@ -263,15 +276,6 @@ jobs:
           out_dir: cli/${{ matrix.goos }}/${{ matrix.hub_arch }}
 
       - uses: BetaHuhn/do-spaces-action@v2
-        with:
-          access_key: ${{ secrets.DO_ACCESS_KEY }}
-          secret_key: ${{ secrets.DO_SECRET_KEY }}
-          space_name: ${{ secrets.DO_SPACE_NAME }}
-          space_region: ${{ secrets.DO_SPACE_REGION }}
-          source: ${{ startsWith(matrix.goos, 'windows') && './signed' || './build' }}/${{ matrix.output }}
-          out_dir: cli/${{ matrix.goos }}/${{ matrix.hub_arch }}/${{ needs.resolve-version.outputs.simple_version }}
-
-      - uses: BetaHuhn/do-spaces-action@v2
         if: ${{ matrix.goos != 'windows' }}
         with:
           access_key: ${{ secrets.DO_ACCESS_KEY }}
@@ -280,16 +284,6 @@ jobs:
           space_region: ${{ secrets.DO_SPACE_REGION }}
           source: ${{ startsWith(matrix.goos, 'windows') && './signed' || './build' }}/${{ matrix.output }}.sig
           out_dir: cli/${{ matrix.goos }}/${{ matrix.hub_arch }}
-
-      - uses: BetaHuhn/do-spaces-action@v2
-        if: ${{ matrix.goos != 'windows' }}
-        with:
-          access_key: ${{ secrets.DO_ACCESS_KEY }}
-          secret_key: ${{ secrets.DO_SECRET_KEY }}
-          space_name: ${{ secrets.DO_SPACE_NAME }}
-          space_region: ${{ secrets.DO_SPACE_REGION }}
-          source: ${{ startsWith(matrix.goos, 'windows') && './signed' || './build' }}/${{ matrix.output }}.sig
-          out_dir: cli/${{ matrix.goos }}/${{ matrix.hub_arch }}/${{ needs.resolve-version.outputs.simple_version }}
 
       - name: Updating Cerebro
         env:
@@ -437,6 +431,80 @@ jobs:
             ARGS+=(--cerebro-manifest "$CEREBRO_MANIFEST")
           fi
           go run ./cmd/generate-cli-manifest "${ARGS[@]}"
+
+      # Write versioned objects from the same files hashed into cli.json.
+      # Doing this here (not in publish) avoids Windows signed-artifact drift.
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/linux/x86_64/blazium-cli
+          out_dir: cli/linux/x86_64/${{ needs.resolve-version.outputs.simple_version }}
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/linux/x86_64/blazium-cli.sig
+          out_dir: cli/linux/x86_64/${{ needs.resolve-version.outputs.simple_version }}
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/linux/x86_32/blazium-cli
+          out_dir: cli/linux/x86_32/${{ needs.resolve-version.outputs.simple_version }}
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/linux/x86_32/blazium-cli.sig
+          out_dir: cli/linux/x86_32/${{ needs.resolve-version.outputs.simple_version }}
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/darwin/x86_64/blazium-cli
+          out_dir: cli/darwin/x86_64/${{ needs.resolve-version.outputs.simple_version }}
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/darwin/x86_64/blazium-cli.sig
+          out_dir: cli/darwin/x86_64/${{ needs.resolve-version.outputs.simple_version }}
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/windows/x86_64/blazium-cli.exe
+          out_dir: cli/windows/x86_64/${{ needs.resolve-version.outputs.simple_version }}
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/windows/x86_32/blazium-cli.exe
+          out_dir: cli/windows/x86_32/${{ needs.resolve-version.outputs.simple_version }}
 
       - name: Verify cli.json checksums
         run: |

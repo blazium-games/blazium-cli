@@ -7,19 +7,54 @@ import (
 
 const CDNBaseURL = "https://cdn.blazium.app/cli"
 
-// VersionedObjectURLs are the public binaries that mark a CLI version as already published.
-func VersionedObjectURLs(version string) []string {
+// VersionedUpload is one local artifact that belongs at a versioned CDN object key.
+type VersionedUpload struct {
+	RelPath   string
+	ObjectKey string
+	URL       string
+}
+
+// VersionedUploads lists binaries (and unix signatures) for a publish version.
+func VersionedUploads(version string) []VersionedUpload {
 	v := strings.TrimSpace(version)
 	if v == "" {
 		return nil
 	}
-	return []string{
-		fmt.Sprintf("%s/linux/x86_64/%s/blazium-cli", CDNBaseURL, v),
-		fmt.Sprintf("%s/linux/x86_32/%s/blazium-cli", CDNBaseURL, v),
-		fmt.Sprintf("%s/windows/x86_64/%s/blazium-cli.exe", CDNBaseURL, v),
-		fmt.Sprintf("%s/windows/x86_32/%s/blazium-cli.exe", CDNBaseURL, v),
-		fmt.Sprintf("%s/darwin/x86_64/%s/blazium-cli", CDNBaseURL, v),
+	files := []struct {
+		rel  string
+		name string
+	}{
+		{"linux/x86_64/blazium-cli", "blazium-cli"},
+		{"linux/x86_64/blazium-cli.sig", "blazium-cli.sig"},
+		{"linux/x86_32/blazium-cli", "blazium-cli"},
+		{"linux/x86_32/blazium-cli.sig", "blazium-cli.sig"},
+		{"windows/x86_64/blazium-cli.exe", "blazium-cli.exe"},
+		{"windows/x86_32/blazium-cli.exe", "blazium-cli.exe"},
+		{"darwin/x86_64/blazium-cli", "blazium-cli"},
+		{"darwin/x86_64/blazium-cli.sig", "blazium-cli.sig"},
 	}
+	out := make([]VersionedUpload, 0, len(files))
+	for _, f := range files {
+		dir := strings.TrimSuffix(f.rel, "/"+f.name)
+		out = append(out, VersionedUpload{
+			RelPath:   f.rel,
+			ObjectKey: fmt.Sprintf("cli/%s/%s/%s", dir, v, f.name),
+			URL:       fmt.Sprintf("%s/%s/%s/%s", CDNBaseURL, dir, v, f.name),
+		})
+	}
+	return out
+}
+
+// VersionedObjectURLs are the public binaries that mark a CLI version as already published.
+func VersionedObjectURLs(version string) []string {
+	var urls []string
+	for _, u := range VersionedUploads(version) {
+		if strings.HasSuffix(u.RelPath, ".sig") {
+			continue
+		}
+		urls = append(urls, u.URL)
+	}
+	return urls
 }
 
 // NextPublishVersion picks the next CLI semver to upload.
