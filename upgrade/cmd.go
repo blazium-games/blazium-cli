@@ -326,6 +326,16 @@ func ReplaceExecutable(dest, newPath string) error {
 
 // ElevateReplace re-runs replace-bin with admin/root privileges.
 func ElevateReplace(from, to string) error {
+	return ElevateReplaceWithSidecar(from, to, "", "")
+}
+
+// ElevateWriteFile writes contents to path with admin/root privileges.
+func ElevateWriteFile(path, contents string) error {
+	return ElevateReplaceWithSidecar("", "", path, contents)
+}
+
+// ElevateReplaceWithSidecar elevates replace-bin, optionally writing a sidecar file.
+func ElevateReplaceWithSidecar(from, to, sidecarPath, sidecarContents string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
@@ -334,34 +344,53 @@ func ElevateReplace(from, to string) error {
 	if err != nil {
 		return err
 	}
-	from, err = filepath.Abs(from)
-	if err != nil {
-		return err
+	if from != "" {
+		from, err = filepath.Abs(from)
+		if err != nil {
+			return err
+		}
 	}
-	to, err = filepath.Abs(to)
-	if err != nil {
-		return err
+	if to != "" {
+		to, err = filepath.Abs(to)
+		if err != nil {
+			return err
+		}
+	}
+	if sidecarPath != "" {
+		sidecarPath, err = filepath.Abs(sidecarPath)
+		if err != nil {
+			return err
+		}
 	}
 
 	switch runtime.GOOS {
 	case "windows":
-		return elevateReplaceWindows(exe, from, to)
+		return elevateReplaceWindows(exe, from, to, sidecarPath, sidecarContents)
 	case "linux":
-		return elevateReplaceLinux(exe, from, to)
+		return elevateReplaceLinux(exe, from, to, sidecarPath, sidecarContents)
 	default:
 		return fmt.Errorf("cannot elevate CLI replace on %s; install to a user-writable path or re-run as root", runtime.GOOS)
 	}
 }
 
-func elevateReplaceWindows(exe, from, to string) error {
-	psArgs := strings.Join([]string{
-		psQuote("update"),
-		psQuote("replace-bin"),
-		psQuote("--from"),
-		psQuote(from),
-		psQuote("--to"),
-		psQuote(to),
-	}, ",")
+func replaceBinArgs(from, to, sidecarPath, sidecarContents string) []string {
+	args := []string{"update", "replace-bin"}
+	if from != "" && to != "" {
+		args = append(args, "--from", from, "--to", to)
+	}
+	if sidecarPath != "" {
+		args = append(args, "--version-file", sidecarPath, "--version", sidecarContents)
+	}
+	return args
+}
+
+func elevateReplaceWindows(exe, from, to, sidecarPath, sidecarContents string) error {
+	raw := replaceBinArgs(from, to, sidecarPath, sidecarContents)
+	quoted := make([]string, 0, len(raw))
+	for _, a := range raw {
+		quoted = append(quoted, psQuote(a))
+	}
+	psArgs := strings.Join(quoted, ",")
 	script := fmt.Sprintf(
 		"$p = Start-Process -FilePath %s -ArgumentList @(%s) -Verb RunAs -Wait -PassThru; if ($null -eq $p) { exit 1223 }; exit $p.ExitCode",
 		psQuote(exe),
@@ -380,8 +409,8 @@ func elevateReplaceWindows(exe, from, to string) error {
 	return nil
 }
 
-func elevateReplaceLinux(exe, from, to string) error {
-	args := []string{exe, "update", "replace-bin", "--from", from, "--to", to}
+func elevateReplaceLinux(exe, from, to, sidecarPath, sidecarContents string) error {
+	args := append([]string{exe}, replaceBinArgs(from, to, sidecarPath, sidecarContents)...)
 	var cmd *exec.Cmd
 	if _, err := exec.LookPath("pkexec"); err == nil {
 		cmd = exec.Command("pkexec", args...)

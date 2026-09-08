@@ -215,11 +215,12 @@ Use --templates to also download and install export templates.`,
 	uninstallCmd.Flags().StringVar(&uninstallChannel, "channel", "", "release|prerelease|nightly (required if version exists on multiple channels)")
 	uninstallCmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip confirmation (always non-interactive)")
 
+	var moveInstalls bool
 	installPathCmd := &cobra.Command{
 		Use:     "install-path [path]",
 		Aliases: []string{"ip"},
 		Short:   "Get or set the editors install directory",
-		Long:    "With no argument, prints the current install-path. With a path, persists it in hub.json (does not move existing installs).",
+		Long:    "With no argument, prints the current install-path. With a path, persists it in hub.json. Pass --move to relocate editors that live under the old path.",
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			f, err := Load()
@@ -240,13 +241,25 @@ Use --templates to also download and install export templates.`,
 			if err := os.MkdirAll(abs, 0o755); err != nil {
 				return err
 			}
+			oldRoot, err := f.EffectiveInstallPath()
+			if err != nil {
+				return err
+			}
+			moved := []string{}
+			if moveInstalls {
+				moved, err = f.RelocateEditors(oldRoot, abs)
+				if err != nil {
+					return err
+				}
+			}
 			f.InstallPath = abs
 			if err := Save(f); err != nil {
 				return err
 			}
-			return output.Write(format(), map[string]any{"install_path": abs, "ok": true})
+			return output.Write(format(), map[string]any{"install_path": abs, "ok": true, "moved": moved})
 		},
 	}
+	installPathCmd.Flags().BoolVar(&moveInstalls, "move", false, "Move existing editor installs to the new path")
 
 	var addVersion, addPlatform, addArch string
 	var addMono bool
@@ -465,7 +478,32 @@ Unset policy defaults to latest release.`,
 			return output.Write(format(), map[string]any{"ok": true, "removed": args[0]})
 		},
 	}
-	projectsCmd.AddCommand(projectsAdd, projectsRemove)
+	var createName string
+	projectsCreate := &cobra.Command{
+		Use:   "create <dir>",
+		Short: "Create a new Blazium project and register it",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			abs, err := CreateProjectDir(args[0], createName)
+			if err != nil {
+				return err
+			}
+			f, err := Load()
+			if err != nil {
+				return err
+			}
+			p, err := f.AddProject(abs)
+			if err != nil {
+				return err
+			}
+			if err := Save(f); err != nil {
+				return err
+			}
+			return output.Write(format(), map[string]any{"ok": true, "project": p})
+		},
+	}
+	projectsCreate.Flags().StringVar(&createName, "name", "", "Project display name (default: folder name)")
+	projectsCmd.AddCommand(projectsAdd, projectsRemove, projectsCreate)
 
 	runLaunch := func(projectArg string, fullProfile bool) error {
 		f, err := Load()

@@ -283,13 +283,18 @@ func downloadAndReplaceCrashReporter(plan *CrashReporterPlan) error {
 	if err := os.MkdirAll(filepath.Dir(plan.DestPath), 0o755); err != nil {
 		return err
 	}
+	verPath := crashReporterVersionPath(plan.DestPath)
 	if err := upgrade.ReplaceExecutable(plan.DestPath, tmp); err != nil {
 		if !upgrade.IsPermissionError(err) {
 			return err
 		}
-		if err2 := upgrade.ElevateReplace(tmp, plan.DestPath); err2 != nil {
-			return err2
-		}
+		return upgrade.ElevateReplaceWithSidecar(tmp, plan.DestPath, verPath, plan.Version)
 	}
-	return os.WriteFile(crashReporterVersionPath(plan.DestPath), []byte(plan.Version+"\n"), 0o644)
+	if err := os.WriteFile(verPath, []byte(plan.Version+"\n"), 0o644); err != nil {
+		if !upgrade.IsPermissionError(err) {
+			return err
+		}
+		return upgrade.ElevateWriteFile(verPath, plan.Version)
+	}
+	return nil
 }
