@@ -82,7 +82,7 @@ func LoadProjectProfile(projectPath string) (ProjectProfile, error) {
 	p.RemoteControl = RemoteControlProfile{
 		Present:       hasPrefixKeys(raw, "blazium/remote_control/"),
 		ServerEnabled: boolSetting(raw, "blazium/remote_control/server_enabled", false),
-		ServerPort:    intSetting(raw, "blazium/remote_control/server_port", 6507),
+		ServerPort:    intSetting(raw, "blazium/remote_control/server_port", 6508),
 		AllowEval:     boolSetting(raw, "blazium/remote_control/allow_eval", false),
 		AllowRuntime:  boolSetting(raw, "blazium/remote_control/allow_runtime", false),
 		BindAddress:   stringSetting(raw, "blazium/remote_control/bind_address", "127.0.0.1"),

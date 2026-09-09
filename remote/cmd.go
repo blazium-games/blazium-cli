@@ -424,7 +424,7 @@ func NewCommand(opts Options) *cobra.Command {
 	}
 	enableCmd.Flags().StringVar(&projectPath, "path", ".", "Project directory containing project.blazium or project.godot")
 	enableCmd.Flags().BoolVar(&allowEval, "allow-eval", false, "Also enable blazium/remote_control/allow_eval")
-	enableCmd.Flags().IntVar(&projectPort, "project-port", 6507, "Port written to project settings")
+	enableCmd.Flags().IntVar(&projectPort, "project-port", 6508, "Port written to project settings")
 
 	doctorCmd := &cobra.Command{
 		Use:   "doctor",
@@ -649,7 +649,7 @@ func NewCommand(opts Options) *cobra.Command {
 		Short: "Trigger Autowork and fetch results",
 	}
 	var awDir, awFile, awTest, awPrefix, awSuffix string
-	var awWait bool
+	var awWait, awIncludeSubdirs bool
 	var awWaitTimeout time.Duration
 	awRunCmd := &cobra.Command{
 		Use:   "run",
@@ -675,6 +675,9 @@ func NewCommand(opts Options) *cobra.Command {
 			if awSuffix != "" {
 				argMap["suffix"] = awSuffix
 			}
+			if awIncludeSubdirs {
+				argMap["include_subdirs"] = true
+			}
 			out, err := c.Exec("autowork_run", argMap)
 			if err != nil {
 				output.ErrorJSON(format(), err)
@@ -696,6 +699,7 @@ func NewCommand(opts Options) *cobra.Command {
 	awRunCmd.Flags().StringVar(&awTest, "test", "", "Filter by test name")
 	awRunCmd.Flags().StringVar(&awPrefix, "prefix", "", "Script prefix filter")
 	awRunCmd.Flags().StringVar(&awSuffix, "suffix", "", "Script suffix filter")
+	awRunCmd.Flags().BoolVar(&awIncludeSubdirs, "include-subdirs", false, "Recurse into test subdirectories")
 	awRunCmd.Flags().BoolVar(&awWait, "wait", false, "Poll until job completes")
 	awRunCmd.Flags().DurationVar(&awWaitTimeout, "wait-timeout", 10*time.Minute, "Timeout for --wait")
 	autoworkCmd.AddCommand(awRunCmd)
