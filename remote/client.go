@@ -24,7 +24,7 @@ type Config struct {
 func DefaultConfig() Config {
 	cfg := Config{
 		Host:    envOr("BLAZIUM_REMOTE_HOST", "127.0.0.1"),
-		Port:    6507,
+		Port:    6508,
 		Token:   os.Getenv("BLAZIUM_REMOTE_TOKEN"),
 		Timeout: 30 * time.Second,
 	}

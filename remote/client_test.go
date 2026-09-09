@@ -12,6 +12,14 @@ import (
 	"testing"
 )
 
+func TestDefaultConfigPort(t *testing.T) {
+	t.Setenv("BLAZIUM_REMOTE_PORT", "")
+	cfg := DefaultConfig()
+	if cfg.Port != 6508 {
+		t.Fatalf("default remote_control port %d, want 6508", cfg.Port)
+	}
+}
+
 func TestClientHealthAndExec(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/health", func(w http.ResponseWriter, r *http.Request) {
