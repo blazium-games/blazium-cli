@@ -24,8 +24,8 @@ func NewCommand(opts Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update",
 		Short: "Check for or apply Blazium product updates",
-		Long: `Check CDN catalogs for updates to blazium-cli, Blazium Hub, crash reporter, toolchain, editors, and export templates.
-Apply downloads and installs CLI, Hub (via the published installer), the Hub crash reporter sidecar, or the Blazium Toolchain manager.`,
+		Long: `Check CDN catalogs for updates to blazium-cli, Blazium Hub, Blazium Crash Reporter, Blazium Toolchain, editors, and export templates.
+Apply downloads and installs blazium-cli, Blazium Hub (via the published installer), the Blazium Crash Reporter sidecar, or the Blazium Toolchain manager.`,
 		Example: `  blazium-cli update check
   blazium-cli update check --product cli --json
   blazium-cli update apply --product cli
