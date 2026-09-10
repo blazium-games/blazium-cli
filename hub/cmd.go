@@ -46,10 +46,10 @@ func AddCommands(root *cobra.Command, opts Options) {
 		noCrashReporter bool
 	)
 
-	const crashReporterFlagHelp = "Editor sidecar crash reporter executable (omitted: Hub sidecar under BLAZIUM if present)"
+	const crashReporterFlagHelp = "Blazium Crash Reporter executable (omitted: Hub sidecar under BLAZIUM if present)"
 	launchFlags := func(cmd *cobra.Command) {
 		cmd.Flags().StringVar(&crashReporter, "crash-reporter", "", crashReporterFlagHelp)
-		cmd.Flags().BoolVar(&noCrashReporter, "no-crash-reporter", false, "Do not attach a crash reporter sidecar (overrides --crash-reporter and the Hub default)")
+		cmd.Flags().BoolVar(&noCrashReporter, "no-crash-reporter", false, "Do not attach Blazium Crash Reporter (overrides --crash-reporter and the Hub default)")
 		cmd.Flags().StringVar(&analytics, "analytics", "", "Editor analytics consent: accepted|declined (omitted: editor keeps its own setting)")
 		cmd.Flags().StringVar(&analyticsMode, "analytics-mode", "", "Editor analytics mode: anonymous|identified")
 	}
