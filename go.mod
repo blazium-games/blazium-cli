@@ -1,10 +1,81 @@
 module github.com/blazium-games/blazium-cli
 
-go 1.23.2
-
-require github.com/spf13/cobra v1.8.1
+go 1.25.0
 
 require (
+	github.com/itchio/butler v1.9.1-0.20260917012738-a7c7a0d69290
+	github.com/itchio/go-itchio v0.0.0-20260917011404-e251772b4a27
+	github.com/spf13/cobra v1.9.1
+	golang.org/x/term v0.45.0
+	gopkg.in/alecthomas/kingpin.v2 v2.2.6
+	gopkg.in/yaml.v3 v3.0.1
+)
+
+require (
+	crawshaw.io/sqlite v0.3.2 // indirect
+	github.com/BurntSushi/toml v1.6.0 // indirect
+	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751 // indirect
+	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137 // indirect
+	github.com/certifi/gocertifi v0.0.0-20210507211836-431795d63e8d // indirect
+	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/clipperhouse/uax29/v2 v2.2.0 // indirect
+	github.com/coder/websocket v1.8.15 // indirect
+	github.com/detailyang/go-fallocate v0.0.0-20180908115635-432fa640bd2e // indirect
+	github.com/efarrer/iothrottler v0.0.3 // indirect
+	github.com/getlantern/context v0.0.0-20220418194847-3d5e7a086201 // indirect
+	github.com/getlantern/errors v1.0.4 // indirect
+	github.com/getlantern/golog v0.0.0-20230503153817-8e72de7e0a65 // indirect
+	github.com/getlantern/hex v0.0.0-20220104173244-ad7e4b9194dc // indirect
+	github.com/getlantern/hidden v0.0.0-20220104173330-f221c5a24770 // indirect
+	github.com/getlantern/idletiming v0.0.0-20231030193830-6767b09f86db // indirect
+	github.com/getlantern/mtime v0.0.0-20200417132445-23682092d1f7 // indirect
+	github.com/getlantern/netx v0.0.0-20251021221514-279deb2cfd40 // indirect
+	github.com/getlantern/ops v0.0.0-20231025133620-f368ab734534 // indirect
+	github.com/go-logr/logr v1.4.4 // indirect
+	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/go-stack/stack v1.8.1 // indirect
+	github.com/gogs/chardet v0.0.0-20211120154057-b7413eaefb8f // indirect
+	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/itchio/arkive v0.0.0-20260428180635-32e8e9c72151 // indirect
+	github.com/itchio/dash v0.0.0-20260916225844-1b2a6ee0e426 // indirect
+	github.com/itchio/fresh-steamer v0.0.0-20260910204833-384b262158c8 // indirect
+	github.com/itchio/hades v0.0.0-20260711210423-80ab837c55cd // indirect
+	github.com/itchio/headway v0.0.0-20251229214354-da882c8b5dd4 // indirect
+	github.com/itchio/httpkit v0.0.0-20260213231528-25109ada88c9 // indirect
+	github.com/itchio/kompress v0.0.0-20200301155538-5c2eecce9e51 // indirect
+	github.com/itchio/lake v0.0.0-20260916234156-ee7b9927c490 // indirect
+	github.com/itchio/ox v0.0.0-20260212201121-1e6be0bfd382 // indirect
+	github.com/itchio/pelican v0.0.0-20260911221521-7b94d473a7a7 // indirect
+	github.com/itchio/savior v0.0.0-20260914182353-072694f48327 // indirect
+	github.com/itchio/screw v0.0.0-20260221011136-e674b460b040 // indirect
+	github.com/itchio/smaug v0.0.0-20260828194311-112ad234bcf9 // indirect
+	github.com/itchio/spellbook v0.0.0-20260223022740-4f847d058148 // indirect
+	github.com/itchio/wharf v0.0.0-20260509025649-e95738701284 // indirect
+	github.com/itchio/wizardry v0.0.0-20260916215147-ed4c4cf460d1 // indirect
+	github.com/jinzhu/inflection v1.0.0 // indirect
+	github.com/klauspost/compress v1.20.0 // indirect
+	github.com/mattn/go-runewidth v0.0.19 // indirect
+	github.com/mitchellh/mapstructure v1.5.0 // indirect
+	github.com/olekukonko/tablewriter v0.0.5 // indirect
+	github.com/oxtoacart/bpool v0.0.0-20190530202638-03653db5a59c // indirect
+	github.com/pkg/errors v0.9.1 // indirect
+	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966 // indirect
+	github.com/spf13/pflag v1.0.6 // indirect
+	github.com/ulikunitz/xz v0.5.16 // indirect
+	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
+	go.opentelemetry.io/otel v1.44.0 // indirect
+	go.opentelemetry.io/otel/metric v1.44.0 // indirect
+	go.opentelemetry.io/otel/trace v1.44.0 // indirect
+	go.uber.org/multierr v1.11.0 // indirect
+	go.uber.org/zap v1.28.0 // indirect
+	golang.org/x/crypto v0.54.0 // indirect
+	golang.org/x/net v0.57.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/time v0.15.0 // indirect
+	google.golang.org/protobuf v1.36.12 // indirect
+	howett.net/plist v1.0.1 // indirect
+	xorm.io/builder v0.3.7 // indirect
 )
