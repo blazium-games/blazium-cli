@@ -118,7 +118,10 @@ jobs:
           fi
 
       - name: Run application tests
-        run: go test ./...
+        run: |
+          set -euo pipefail
+          export CGO_ENABLED=1
+          go test ./...
 
       - name: Build application
         run: |

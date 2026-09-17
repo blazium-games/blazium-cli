@@ -15,7 +15,7 @@ type LoginInput struct {
 	ConfigVDF    string
 }
 
-// Login runs steamcmd +login +quit with an internal Guard code when shared_secret is set.
+// Login runs steamcmd via +runscript (login + quit) with an internal Guard code when shared_secret is set.
 func Login(ctx context.Context, in LoginInput) (bool, error) {
 	if in.Steamcmd == "" {
 		return false, fmt.Errorf("steamcmd path is empty; run blazium-cli deploy tools ensure")

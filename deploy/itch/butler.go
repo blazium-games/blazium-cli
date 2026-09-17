@@ -3,7 +3,9 @@ package itch
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -70,24 +72,77 @@ func Push(in PushInput) error {
 }
 
 func pushDryRun(ctx *mansion.Context, in PushInput) error {
-	// butler's dry-run is gated on unexported args; listing via Do with a
-	// dummy client is unsafe. Walk the source and report the plan instead.
-	st, err := os.Stat(in.Src)
+	// butler's dry-run is gated on unexported args; walk the source and report
+	// the file plan instead of calling push.Do with a dummy client.
+	plan, err := walkPushPlan(in.Src)
 	if err != nil {
 		return err
 	}
-	if !st.IsDir() && !st.Mode().IsRegular() {
-		return fmt.Errorf("src is not a file or directory: %s", in.Src)
-	}
-	comm.Opf("Dry run: would push %s to %s", in.Src, in.Target)
-	comm.Result(map[string]interface{}{
+	comm.Opf("Dry run: would push %s (%d files, %d bytes) to %s", in.Src, plan.Files, plan.Bytes, in.Target)
+	out := map[string]interface{}{
 		"buildId": 0,
 		"target":  in.Target,
 		"src":     in.Src,
 		"dryRun":  true,
-	})
+		"files":   plan.Files,
+		"bytes":   plan.Bytes,
+	}
+	const capPaths = 50
+	if len(plan.Paths) > capPaths {
+		out["sample"] = plan.Paths[:capPaths]
+	} else {
+		out["paths"] = plan.Paths
+	}
+	comm.Result(out)
 	_ = ctx
 	return nil
+}
+
+type pushPlan struct {
+	Files int
+	Bytes int64
+	Paths []string
+}
+
+func walkPushPlan(src string) (*pushPlan, error) {
+	st, err := os.Stat(src)
+	if err != nil {
+		return nil, err
+	}
+	if !st.IsDir() && !st.Mode().IsRegular() {
+		return nil, fmt.Errorf("src is not a file or directory: %s", src)
+	}
+	plan := &pushPlan{}
+	if !st.IsDir() {
+		plan.Files = 1
+		plan.Bytes = st.Size()
+		plan.Paths = []string{filepath.Base(src)}
+		return plan, nil
+	}
+	err = filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		rel, relErr := filepath.Rel(src, path)
+		if relErr != nil {
+			rel = path
+		}
+		plan.Files++
+		plan.Bytes += info.Size()
+		plan.Paths = append(plan.Paths, filepath.ToSlash(rel))
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return plan, nil
 }
 
 type SteamSyncInput struct {

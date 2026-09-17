@@ -8,18 +8,45 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 )
 
 const alphabet = "23456789BCDFGHJKMNPQRTVWXY"
 
+// queryTimeOffsetFn is QueryTimeOffset; tests replace it to avoid the network.
+var queryTimeOffsetFn = QueryTimeOffset
+
+var steamOffsetCache struct {
+	mu   sync.Mutex
+	unix int64
+	off  int64
+}
+
+func steamClockOffset() int64 {
+	steamOffsetCache.mu.Lock()
+	defer steamOffsetCache.mu.Unlock()
+	now := time.Now().Unix()
+	if steamOffsetCache.unix != 0 && now-steamOffsetCache.unix < 30 {
+		return steamOffsetCache.off
+	}
+	off, err := queryTimeOffsetFn()
+	if err != nil {
+		return 0
+	}
+	steamOffsetCache.unix = now
+	steamOffsetCache.off = off
+	return off
+}
+
 // GenerateAuthCode is a Steam-style 5-character TOTP code (not RFC 6238 digits).
+// timeOffset is added on top of Steam QueryTime vs local clock (best-effort; 0 if QueryTime fails).
 func GenerateAuthCode(secret string, timeOffset int64) (string, error) {
 	key, err := decodeSecret(secret)
 	if err != nil {
 		return "", err
 	}
-	unix := time.Now().Unix() + timeOffset
+	unix := time.Now().Unix() + steamClockOffset() + timeOffset
 	return codeAt(key, unix), nil
 }
 
@@ -116,7 +143,8 @@ func DeviceID(steamID string) string {
 }
 
 // WindowCode returns a login code that will not straddle a 30s boundary.
-// If offset 0 and +5s differ, wait until the later window (same as steam_deploy.sh).
+// Codes use Steam QueryTime vs local clock (best-effort). If offset 0 and +5s
+// differ, wait until the later window (same as steam_deploy.sh).
 func WindowCode(secret string) (string, error) {
 	a, err := GenerateAuthCode(secret, 0)
 	if err != nil {

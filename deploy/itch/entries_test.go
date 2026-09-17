@@ -46,6 +46,48 @@ func TestEntriesFromConfig(t *testing.T) {
 	}
 }
 
+func TestWalkPushPlanDirAndFile(t *testing.T) {
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "nested")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	a := filepath.Join(dir, "a.txt")
+	b := filepath.Join(sub, "b.bin")
+	if err := os.WriteFile(a, []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(b, []byte("xyz"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := walkPushPlan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Files != 2 || plan.Bytes != 5 {
+		t.Fatalf("%+v", plan)
+	}
+	foundA, foundB := false, false
+	for _, p := range plan.Paths {
+		if p == "a.txt" {
+			foundA = true
+		}
+		if p == "nested/b.bin" {
+			foundB = true
+		}
+	}
+	if !foundA || !foundB {
+		t.Fatalf("paths %v", plan.Paths)
+	}
+	one, err := walkPushPlan(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if one.Files != 1 || one.Bytes != 2 || one.Paths[0] != "a.txt" {
+		t.Fatalf("%+v", one)
+	}
+}
+
 func TestApplyConfigEnvUsesYAMLAPIKey(t *testing.T) {
 	t.Setenv("BUTLER_API_KEY", "")
 	t.Setenv("BLAZIUM_BUTLER_API_KEY", "")

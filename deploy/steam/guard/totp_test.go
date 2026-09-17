@@ -63,6 +63,50 @@ func TestConfirmationAndDevice(t *testing.T) {
 	}
 }
 
+func TestSteamClockOffsetCached(t *testing.T) {
+	t.Cleanup(resetSteamClockOffset)
+	resetSteamClockOffset()
+	n := 0
+	queryTimeOffsetFn = func() (int64, error) {
+		n++
+		return 42, nil
+	}
+	if steamClockOffset() != 42 {
+		t.Fatal(steamClockOffset())
+	}
+	if steamClockOffset() != 42 {
+		t.Fatal("second")
+	}
+	if n != 1 {
+		t.Fatalf("QueryTime calls %d", n)
+	}
+}
+
+func TestSteamClockOffsetFailureIsZero(t *testing.T) {
+	t.Cleanup(resetSteamClockOffset)
+	resetSteamClockOffset()
+	queryTimeOffsetFn = func() (int64, error) {
+		return 99, errSteamTime
+	}
+	if steamClockOffset() != 0 {
+		t.Fatal(steamClockOffset())
+	}
+}
+
+func resetSteamClockOffset() {
+	queryTimeOffsetFn = QueryTimeOffset
+	steamOffsetCache.mu.Lock()
+	steamOffsetCache.unix = 0
+	steamOffsetCache.off = 0
+	steamOffsetCache.mu.Unlock()
+}
+
+var errSteamTime = errString("offline")
+
+type errString string
+
+func (e errString) Error() string { return string(e) }
+
 func containsRune(s string, r rune) bool {
 	for _, c := range s {
 		if c == r {
