@@ -9,9 +9,9 @@ import (
 )
 
 // ProcessFiles handles the addfiles spec workflow
-func ProcessFiles(client *Client, config *ParsedConfig) error {
+func ProcessFiles(client *Client, config *ParsedConfig) (*Result, error) {
 	if config.FilesAsset == nil {
-		return fmt.Errorf("files asset is nil")
+		return nil, fmt.Errorf("files asset is nil")
 	}
 
 	asset := config.FilesAsset
@@ -25,7 +25,7 @@ func ProcessFiles(client *Client, config *ParsedConfig) error {
 	// Validate all files exist
 	fmt.Println("Validating files...")
 	if err := ValidateFiles(filePaths); err != nil {
-		return fmt.Errorf("file validation failed: %w", err)
+		return nil, fmt.Errorf("file validation failed: %w", err)
 	}
 	fmt.Printf("All %d files validated\n", len(filePaths))
 
@@ -35,7 +35,7 @@ func ProcessFiles(client *Client, config *ParsedConfig) error {
 
 	fmt.Println("Creating zip file...")
 	if err := CreateZip(tempZip, filePaths); err != nil {
-		return fmt.Errorf("failed to create zip: %w", err)
+		return nil, fmt.Errorf("failed to create zip: %w", err)
 	}
 	fmt.Printf("Zip file created: %s\n", tempZip)
 
@@ -43,14 +43,14 @@ func ProcessFiles(client *Client, config *ParsedConfig) error {
 	fmt.Println("Calculating checksum...")
 	checksum, err := CalculateSHA256(tempZip)
 	if err != nil {
-		return fmt.Errorf("failed to calculate checksum: %w", err)
+		return nil, fmt.Errorf("failed to calculate checksum: %w", err)
 	}
 	fmt.Printf("Checksum: %s\n", checksum)
 
 	// Get file size
 	fileInfo, err := os.Stat(tempZip)
 	if err != nil {
-		return fmt.Errorf("failed to get file info: %w", err)
+		return nil, fmt.Errorf("failed to get file info: %w", err)
 	}
 	fileSize := fileInfo.Size()
 
@@ -71,13 +71,14 @@ func ProcessFiles(client *Client, config *ParsedConfig) error {
 		"description": title,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create platform build: %w", err)
+		return nil, fmt.Errorf("failed to create platform build: %w", err)
 	}
 	buildID := responseBuildID(buildResp.Data)
 	if buildID == "" {
-		return fmt.Errorf("build_id not found in response")
+		return nil, fmt.Errorf("build_id not found in response")
 	}
 	printBuildIDs(buildResp.Data, platform)
+	res := resultFromData(buildResp.Data)
 
 	formData := map[string]string{
 		"build_id":   buildID,
@@ -97,12 +98,20 @@ func ProcessFiles(client *Client, config *ParsedConfig) error {
 
 	resp, sessionID, err := client.PostMultipart(client.filesURL("/tool/upload/files"), formData, files, nil)
 	if err != nil {
-		return fmt.Errorf("initial upload failed: %w", err)
+		return nil, fmt.Errorf("initial upload failed: %w", err)
 	}
 
 	if isUploadComplete(resp) {
 		printFileUploadResult(resp.Data, platform)
-		return nil
+		done := resultFromData(resp.Data)
+		if done.BuildID != "" {
+			res.BuildID = done.BuildID
+		}
+		if done.AppID != "" {
+			res.AppID = done.AppID
+		}
+		res.FileUID = done.FileUID
+		return res, nil
 	}
 
 	// Upload is incomplete, need to resume
@@ -112,17 +121,17 @@ func ProcessFiles(client *Client, config *ParsedConfig) error {
 		if sessionIDFromData, ok := resp.Data["session_id"].(string); ok {
 			sessionID = sessionIDFromData
 		} else {
-			return fmt.Errorf("session_id not found in response")
+			return nil, fmt.Errorf("session_id not found in response")
 		}
 	}
 
 	// Resume upload
 	if err := uploadFileWithResume(client, tempZip, formData, fileSize, sessionID); err != nil {
-		return fmt.Errorf("resume upload failed: %w", err)
+		return nil, fmt.Errorf("resume upload failed: %w", err)
 	}
 
 	fmt.Println("File uploaded successfully")
-	return nil
+	return res, nil
 }
 
 // uploadFileWithResume handles file upload with resume capability

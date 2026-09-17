@@ -147,6 +147,29 @@ func itchCommands(opts Options, configPath *string) *cobra.Command {
 			} else {
 				config.ApplyItchEnv("")
 			}
+			if pushDry {
+				plan := map[string]any{
+					"src":       args[0],
+					"target":    target,
+					"dry_run":   true,
+					"env_names": config.EnvNamesUsed(cfg),
+				}
+				if cfg != nil {
+					plan["config"] = cfg.Redacted()
+				}
+				if err := itch.Push(itch.PushInput{
+					Src:         args[0],
+					Target:      target,
+					UserVersion: pushVersion,
+					DryRun:      true,
+					IfChanged:   pushIfChanged,
+					Hidden:      pushHidden,
+					JSON:        jsonOut(opts),
+				}); err != nil {
+					return err
+				}
+				return output.Write(formatOf(opts), plan)
+			}
 			return itch.Push(itch.PushInput{
 				Src:         args[0],
 				Target:      target,
@@ -209,6 +232,19 @@ func itchCommands(opts Options, configPath *string) *cobra.Command {
 					in.Entries = entries
 				}
 			}
+			if syncDry {
+				if err := itch.SteamSync(cmd.Context(), in); err != nil {
+					return err
+				}
+				out := map[string]any{
+					"dry_run":   true,
+					"env_names": config.EnvNamesUsed(cfg),
+				}
+				if cfg != nil {
+					out["config"] = cfg.Redacted()
+				}
+				return output.Write(formatOf(opts), out)
+			}
 			return itch.SteamSync(cmd.Context(), in)
 		},
 	}
@@ -258,7 +294,7 @@ func itchCommands(opts Options, configPath *string) *cobra.Command {
 
 func steamCommands(opts Options, configPath *string) *cobra.Command {
 	steamCmd := &cobra.Command{Use: "steam", Short: "SteamCMD upload, Guard, and SetAppBuildLive"}
-	steamCmd.AddCommand(guardCommands(opts))
+	steamCmd.AddCommand(guardCommands(opts, configPath))
 
 	var loginUser, loginPass, loginSecret, loginMa, loginVDF string
 	loginCmd := &cobra.Command{
@@ -321,11 +357,16 @@ func steamCommands(opts Options, configPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return output.Write(formatOf(opts), map[string]any{
-				"app_vdf":  res.AppVDF,
-				"build_id": res.BuildID,
-				"dry_run":  res.DryRun,
-			})
+			out := map[string]any{
+				"app_vdf":   res.AppVDF,
+				"build_id":  res.BuildID,
+				"dry_run":   res.DryRun,
+				"env_names": config.EnvNamesUsed(cfg),
+			}
+			if upDry && cfg != nil {
+				out["config"] = cfg.Redacted()
+			}
+			return output.Write(formatOf(opts), out)
 		},
 	}
 	uploadCmd.Flags().StringVar(&upApp, "app-id", "", "Steam app id")
@@ -362,9 +403,11 @@ func steamCommands(opts Options, configPath *string) *cobra.Command {
 				return err
 			}
 			return output.Write(formatOf(opts), map[string]any{
-				"app_vdf": res.AppVDF,
-				"vdf":     string(body),
-				"dry_run": true,
+				"app_vdf":   res.AppVDF,
+				"vdf":       string(body),
+				"dry_run":   true,
+				"env_names": config.EnvNamesUsed(cfg),
+				"config":    redactedConfig(cfg),
 			})
 		},
 	})
@@ -390,6 +433,7 @@ func steamCommands(opts Options, configPath *string) *cobra.Command {
 				in.SteamID = config.FirstNonEmpty(in.SteamID, cfg.Steam.SteamID)
 			}
 			in.APIKey = config.FirstNonEmpty(in.APIKey, os.Getenv("BLAZIUM_STEAM_API_KEY"))
+			in.AppID = config.FirstNonEmpty(in.AppID, os.Getenv("BLAZIUM_STEAM_APP_ID"))
 			in.SteamID = config.FirstNonEmpty(in.SteamID, os.Getenv("BLAZIUM_STEAM_ID"))
 			code, body, err := steam.SetLive(in)
 			if err != nil {
@@ -408,7 +452,7 @@ func steamCommands(opts Options, configPath *string) *cobra.Command {
 	return steamCmd
 }
 
-func guardCommands(opts Options) *cobra.Command {
+func guardCommands(opts Options, configPath *string) *cobra.Command {
 	g := &cobra.Command{Use: "guard", Short: "In-process Steam Guard (TOTP, setup, maFile)"}
 	var totpSecret, totpMa string
 	var totpOffset int64
@@ -417,7 +461,8 @@ func guardCommands(opts Options) *cobra.Command {
 		Short: "Print a 5-character Steam Guard code",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			secret, err := resolveSecret(totpSecret, totpMa)
+			cfg, _ := loadConfig(*configPath)
+			secret, err := resolveSecret(totpSecret, totpMa, cfg)
 			if err != nil {
 				return err
 			}
@@ -536,8 +581,21 @@ func guardCommands(opts Options) *cobra.Command {
 	return g
 }
 
-func resolveSecret(secret, maFile string) (string, error) {
-	return guard.SharedSecretFromFlags(secret, maFile)
+func resolveSecret(secret, maFile string, cfg *config.Config) (string, error) {
+	if strings.TrimSpace(secret) != "" {
+		return strings.TrimSpace(secret), nil
+	}
+	if cfg != nil && strings.TrimSpace(cfg.Steam.SharedSecret) != "" {
+		return strings.TrimSpace(cfg.Steam.SharedSecret), nil
+	}
+	return guard.SharedSecretFromFlags("", maFile)
+}
+
+func redactedConfig(cfg *config.Config) any {
+	if cfg == nil {
+		return map[string]any{}
+	}
+	return cfg.Redacted()
 }
 
 func steamCreds(cfg *config.Config, user, pass, secret, ma, vdf string) (string, string, string, string) {

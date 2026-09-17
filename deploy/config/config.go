@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -14,10 +15,11 @@ var FileNames = []string{"blazium-deploy.yml", "blazium-deploy.yaml"}
 
 // Config is the project deploy YAML after expansion.
 type Config struct {
-	Steam SteamConfig `yaml:"steam"`
-	Itch  ItchConfig  `yaml:"itch"`
-	Games GamesConfig `yaml:"games"`
-	Path  string      `yaml:"-"`
+	Steam    SteamConfig `yaml:"steam"`
+	Itch     ItchConfig  `yaml:"itch"`
+	Games    GamesConfig `yaml:"games"`
+	Path     string      `yaml:"-"`
+	envNames []string    `yaml:"-"`
 }
 
 type SteamConfig struct {
@@ -103,6 +105,8 @@ func LoadFile(path string) (*Config, error) {
 	if err := yaml.Unmarshal(raw, &node); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
+	var names []string
+	collectEnvRefs(node, &names)
 	expanded, err := ExpandAny(node)
 	if err != nil {
 		return nil, err
@@ -116,7 +120,8 @@ func LoadFile(path string) (*Config, error) {
 		return nil, err
 	}
 	cfg.Path = path
-	applyEnvDefaults(&cfg)
+	applyEnvDefaults(&cfg, &names)
+	cfg.envNames = uniqSorted(names)
 	return &cfg, nil
 }
 
@@ -129,15 +134,19 @@ func LoadOptional(start string) (*Config, error) {
 	return LoadFile(p)
 }
 
-func applyEnvDefaults(cfg *Config) {
+func applyEnvDefaults(cfg *Config, names *[]string) {
 	set := func(dst *string, env string) {
 		if strings.TrimSpace(*dst) != "" {
 			return
+		}
+		if names != nil {
+			*names = append(*names, env)
 		}
 		if v := strings.TrimSpace(os.Getenv(env)); v != "" {
 			*dst = v
 		}
 	}
+	set(&cfg.Steam.AppID, "BLAZIUM_STEAM_APP_ID")
 	set(&cfg.Steam.Username, "BLAZIUM_STEAM_USERNAME")
 	set(&cfg.Steam.Password, "BLAZIUM_STEAM_PASSWORD")
 	set(&cfg.Steam.SharedSecret, "BLAZIUM_STEAM_SHARED_SECRET")
@@ -209,14 +218,20 @@ func (c *Config) Redacted() map[string]any {
 	return map[string]any{
 		"path": c.Path,
 		"steam": map[string]any{
-			"app_id":        c.Steam.AppID,
-			"description":   c.Steam.Description,
-			"username":      redactIfSet(c.Steam.Username),
-			"password":      redactIfSet(c.Steam.Password),
-			"shared_secret": redactIfSet(c.Steam.SharedSecret),
-			"api_key":       redactIfSet(c.Steam.APIKey),
-			"steam_id":      c.Steam.SteamID,
-			"depots":        c.Steam.Depots,
+			"app_id":          c.Steam.AppID,
+			"description":     c.Steam.Description,
+			"username":        redactIfSet(c.Steam.Username),
+			"password":        redactIfSet(c.Steam.Password),
+			"shared_secret":   redactIfSet(c.Steam.SharedSecret),
+			"api_key":         redactIfSet(c.Steam.APIKey),
+			"steam_id":        c.Steam.SteamID,
+			"refresh_token":   redactIfSet(c.Steam.RefreshToken),
+			"config_vdf":      redactIfSet(c.Steam.ConfigVDF),
+			"publisher_key":   redactIfSet(c.Steam.PublisherKey),
+			"account_name":    redactIfSet(c.Steam.AccountName),
+			"branch":          c.Steam.Branch,
+			"branch_password": redactIfSet(c.Steam.BranchPassword),
+			"depots":          c.Steam.Depots,
 		},
 		"itch": map[string]any{
 			"target":     c.Itch.Target,
@@ -238,4 +253,109 @@ func redactIfSet(v string) string {
 		return ""
 	}
 	return "(set)"
+}
+
+var knownEnvNames = []string{
+	"BLAZIUM_STEAM_APP_ID",
+	"BLAZIUM_STEAM_USERNAME",
+	"BLAZIUM_STEAM_PASSWORD",
+	"BLAZIUM_STEAM_SHARED_SECRET",
+	"BLAZIUM_STEAM_API_KEY",
+	"BLAZIUM_STEAM_ID",
+	"BLAZIUM_STEAM_CONFIG_VDF",
+	"BLAZIUM_STEAM_REFRESH_TOKEN",
+	"BLAZIUM_STEAM_ACCOUNT_NAME",
+	"BLAZIUM_STEAM_PUBLISHER_KEY",
+	"BLAZIUM_STEAM_BRANCH_PASSWORD",
+	"BLAZIUM_STEAM_BRANCH",
+	"BLAZIUM_GAME_VERSION",
+	"BLAZIUM_BUTLER_API_KEY",
+	"BLAZIUM_ACCESS_TOKEN",
+	"BLAZIUM_SECRET_KEY",
+	"BLAZIUM_API_URL",
+	"BLAZIUM_UPLOAD_URL",
+	"BUTLER_API_KEY",
+	"BUTLER_STEAM_REFRESH_TOKEN",
+	"BUTLER_STEAM_ACCOUNT_NAME",
+	"BUTLER_STEAM_PUBLISHER_KEY",
+	"BUTLER_STEAM_BRANCH_PASSWORD",
+}
+
+// EnvNamesUsed returns environment variable names referenced or currently set
+// for deploy (values are never included).
+func EnvNamesUsed(cfg *Config) []string {
+	var names []string
+	if cfg != nil {
+		names = append(names, cfg.envNames...)
+	}
+	for _, n := range knownEnvNames {
+		if strings.TrimSpace(os.Getenv(n)) != "" {
+			names = append(names, n)
+		}
+	}
+	return uniqSorted(names)
+}
+
+func uniqSorted(in []string) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, n := range in {
+		n = strings.TrimSpace(n)
+		if n == "" {
+			continue
+		}
+		if _, ok := seen[n]; ok {
+			continue
+		}
+		seen[n] = struct{}{}
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func collectEnvRefs(v any, dst *[]string) {
+	switch t := v.(type) {
+	case string:
+		collectEnvRefsInString(t, dst)
+	case map[string]any:
+		for _, val := range t {
+			collectEnvRefs(val, dst)
+		}
+	case []any:
+		for _, val := range t {
+			collectEnvRefs(val, dst)
+		}
+	}
+}
+
+func collectEnvRefsInString(s string, dst *[]string) {
+	i := 0
+	for i < len(s) {
+		if s[i] != '$' {
+			i++
+			continue
+		}
+		if i+1 < len(s) && s[i+1] == '$' {
+			i += 2
+			continue
+		}
+		if i+1 < len(s) && s[i+1] == '{' {
+			end := strings.IndexByte(s[i+2:], '}')
+			if end < 0 {
+				return
+			}
+			body := s[i+2 : i+2+end]
+			name := body
+			if j := strings.Index(body, ":-"); j >= 0 {
+				name = body[:j]
+			}
+			if isEnvName(name) {
+				*dst = append(*dst, name)
+			}
+			i += 3 + end
+			continue
+		}
+		i++
+	}
 }

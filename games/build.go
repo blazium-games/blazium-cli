@@ -6,14 +6,15 @@ import (
 )
 
 // ProcessBuild handles the build spec workflow
-func ProcessBuild(client *Client, config *ParsedConfig) error {
+func ProcessBuild(client *Client, config *ParsedConfig) (*Result, error) {
 	if config.BuildAsset == nil {
-		return fmt.Errorf("build asset is nil")
+		return nil, fmt.Errorf("build asset is nil")
 	}
 
 	asset := config.BuildAsset
 	platforms := buildPlatforms(asset)
 	var imageBuildID string
+	res := &Result{Status: "ok"}
 
 	for _, p := range platforms {
 		display := asset.Title
@@ -49,13 +50,18 @@ func ProcessBuild(client *Client, config *ParsedConfig) error {
 		fmt.Println("Uploading build information...")
 		resp, err := client.PostJSON("/tool/upload/build", buildReq)
 		if err != nil {
-			return fmt.Errorf("failed to upload build: %w", err)
+			return nil, fmt.Errorf("failed to upload build: %w", err)
 		}
 		buildUID := responseBuildID(resp.Data)
 		if buildUID == "" {
-			return fmt.Errorf("build_id not found in response")
+			return nil, fmt.Errorf("build_id not found in response")
 		}
 		printBuildIDs(resp.Data, p)
+		ids := resultFromData(resp.Data)
+		res.BuildID = ids.BuildID
+		if ids.AppID != "" {
+			res.AppID = ids.AppID
+		}
 		if imageBuildID == "" {
 			imageBuildID = buildUID
 		}
@@ -64,12 +70,12 @@ func ProcessBuild(client *Client, config *ParsedConfig) error {
 	if len(asset.Images) > 0 {
 		fmt.Println("Uploading images...")
 		if err := uploadImages(client, imageBuildID, asset.Images); err != nil {
-			return fmt.Errorf("failed to upload images: %w", err)
+			return nil, fmt.Errorf("failed to upload images: %w", err)
 		}
 		fmt.Printf("Successfully uploaded %d image(s)\n", len(asset.Images))
 	}
 
-	return nil
+	return res, nil
 }
 
 // uploadImages uploads images to the build

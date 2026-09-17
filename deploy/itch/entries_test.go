@@ -45,3 +45,12 @@ func TestEntriesFromConfig(t *testing.T) {
 		t.Fatalf("skip %+v", entries[0].Skip)
 	}
 }
+
+func TestApplyConfigEnvUsesYAMLAPIKey(t *testing.T) {
+	t.Setenv("BUTLER_API_KEY", "")
+	t.Setenv("BLAZIUM_BUTLER_API_KEY", "")
+	ApplyConfigEnv(&config.Config{Itch: config.ItchConfig{APIKey: "from-yaml"}})
+	if os.Getenv("BUTLER_API_KEY") != "from-yaml" {
+		t.Fatalf("got %q", os.Getenv("BUTLER_API_KEY"))
+	}
+}

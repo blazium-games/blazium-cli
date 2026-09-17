@@ -13,8 +13,11 @@ func TestLoadFileExpandsAndDefaults(t *testing.T) {
 	if err := os.WriteFile(path, body, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("BLAZIUM_STEAM_APP_ID", "999")
 	t.Setenv("BLAZIUM_STEAM_USERNAME", "builder")
 	t.Setenv("BLAZIUM_STEAM_API_KEY", "pubkey")
+	t.Setenv("BLAZIUM_STEAM_REFRESH_TOKEN", "rtok")
+	t.Setenv("BLAZIUM_STEAM_PUBLISHER_KEY", "pkey")
 	cfg, err := LoadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -29,6 +32,44 @@ func TestLoadFileExpandsAndDefaults(t *testing.T) {
 	steam := red["steam"].(map[string]any)
 	if steam["username"] != "(set)" || steam["api_key"] != "(set)" {
 		t.Fatalf("%v", steam)
+	}
+	if steam["refresh_token"] != "(set)" || steam["publisher_key"] != "(set)" {
+		t.Fatalf("redact extras %v", steam)
+	}
+	names := EnvNamesUsed(cfg)
+	want := map[string]bool{"BLAZIUM_STEAM_USERNAME": true, "BLAZIUM_STEAM_APP_ID": true, "BLAZIUM_STEAM_API_KEY": true}
+	for n := range want {
+		found := false
+		for _, got := range names {
+			if got == n {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("env names %v missing %s", names, n)
+		}
+	}
+	for _, n := range names {
+		if n == "pubkey" || n == "builder" || n == "rtok" {
+			t.Fatalf("value leaked in env names: %v", names)
+		}
+	}
+}
+
+func TestAppIDFromEnv(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "blazium-deploy.yml")
+	if err := os.WriteFile(path, []byte("steam:\n  username: builder\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("BLAZIUM_STEAM_APP_ID", "480")
+	cfg, err := LoadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Steam.AppID != "480" {
+		t.Fatalf("app_id %q", cfg.Steam.AppID)
 	}
 }
 

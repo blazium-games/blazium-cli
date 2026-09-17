@@ -109,10 +109,20 @@ The DigitalOcean Spaces plumber (games_cli/cmd/upload) is not part of this comma
 					parsed.BuildAsset.Channel = channelFlag
 				}
 			}
-			if err := ProcessBuild(client, parsed); err != nil {
+			res, err := ProcessBuild(client, parsed)
+			if err != nil {
 				return err
 			}
-			return output.Write(formatOf(opts), map[string]any{"status": "ok"})
+			out := map[string]any{"status": "ok"}
+			if res != nil {
+				if res.BuildID != "" {
+					out["build_id"] = res.BuildID
+				}
+				if res.AppID != "" {
+					out["app_id"] = res.AppID
+				}
+			}
+			return output.Write(formatOf(opts), out)
 		},
 	}
 	buildCmd.Flags().StringVar(&asset, "asset", "", "Path to YAML asset file")
@@ -153,10 +163,23 @@ The DigitalOcean Spaces plumber (games_cli/cmd/upload) is not part of this comma
 			if channelFlag != "" {
 				parsed.FilesAsset.Channel = channelFlag
 			}
-			if err := ProcessFiles(client, parsed); err != nil {
+			res, err := ProcessFiles(client, parsed)
+			if err != nil {
 				return err
 			}
-			return output.Write(formatOf(opts), map[string]any{"status": "ok"})
+			out := map[string]any{"status": "ok"}
+			if res != nil {
+				if res.BuildID != "" {
+					out["build_id"] = res.BuildID
+				}
+				if res.AppID != "" {
+					out["app_id"] = res.AppID
+				}
+				if res.FileUID != "" {
+					out["file_uid"] = res.FileUID
+				}
+			}
+			return output.Write(formatOf(opts), out)
 		},
 	}
 	addfilesCmd.Flags().StringVar(&asset, "asset", "", "Path to YAML asset file")

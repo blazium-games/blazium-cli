@@ -1,10 +1,8 @@
 package steam
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"os/exec"
 
 	"github.com/blazium-games/blazium-cli/deploy/steam/guard"
 )
@@ -30,21 +28,16 @@ func Login(ctx context.Context, in LoginInput) (bool, error) {
 			return false, err
 		}
 	}
-	args := []string{"+login", in.Username, in.Password}
+	totp := ""
 	if in.SharedSecret != "" {
 		code, err := guard.WindowCode(in.SharedSecret)
 		if err != nil {
 			return false, err
 		}
-		args = append(args, code)
+		totp = code
 	}
-	args = append(args, "+quit")
-	cmd := exec.CommandContext(ctx, in.Steamcmd, args...)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	if err := cmd.Run(); err != nil {
-		return false, fmt.Errorf("steamcmd login: %w\n%s", err, out.String())
+	if _, err := runSteamcmdScript(ctx, in.Steamcmd, []string{in.Password, totp}, loginScriptLines(in.Username, in.Password, totp)...); err != nil {
+		return false, err
 	}
 	return true, nil
 }

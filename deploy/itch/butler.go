@@ -126,6 +126,9 @@ func SteamSync(goCtx context.Context, in SteamSyncInput) error {
 		if in.CacheDir != "" && e.CacheDir == "" {
 			e.CacheDir = in.CacheDir
 		}
+		if in.Hidden {
+			e.Hidden = true
+		}
 		planOpts, err := e.PlanOptions(password)
 		if err != nil {
 			return err
@@ -209,6 +212,10 @@ func ParseAppID(s string) (uint32, error) {
 
 // ApplyConfigEnv maps BLAZIUM_* onto butler env names.
 func ApplyConfigEnv(cfg *config.Config) {
-	config.ApplyItchEnv("")
+	apiKey := ""
+	if cfg != nil {
+		apiKey = cfg.Itch.APIKey
+	}
+	config.ApplyItchEnv(apiKey)
 	config.ApplySteamSyncEnv(cfg)
 }

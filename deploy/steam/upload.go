@@ -1,12 +1,10 @@
 package steam
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -69,28 +67,23 @@ func Upload(ctx context.Context, in UploadInput) (*UploadResult, error) {
 	}
 	var lastErr error
 	for attempt := 1; attempt <= 5; attempt++ {
-		args := []string{"+login", in.Username, in.Password}
+		totp := ""
 		if in.SharedSecret != "" {
 			code, err := guard.WindowCode(in.SharedSecret)
 			if err != nil {
 				return nil, err
 			}
-			args = append(args, code)
+			totp = code
 		}
-		args = append(args, "+run_app_build", appVDF, "+quit")
-		cmd := exec.CommandContext(ctx, in.Steamcmd, args...)
-		var out bytes.Buffer
-		cmd.Stdout = &out
-		cmd.Stderr = &out
-		err := cmd.Run()
-		body := out.String()
+		body, err := runSteamcmdScript(ctx, in.Steamcmd, []string{in.Password, totp},
+			loginScriptLines(in.Username, in.Password, totp, `run_app_build `+steamcmdQuote(appVDF))...)
 		if err == nil {
 			if m := buildIDRe.FindStringSubmatch(body); len(m) == 2 {
 				res.BuildID = m[1]
 			}
 			return res, nil
 		}
-		lastErr = fmt.Errorf("steamcmd attempt %d: %w\n%s", attempt, err, body)
+		lastErr = fmt.Errorf("steamcmd attempt %d: %w", attempt, err)
 	}
 	return res, lastErr
 }
