@@ -1,6 +1,6 @@
 # Blazium CLI
 
-Command-line tool for installing [Blazium](https://blazium.app) editors, managing a local project registry, self-updating, and remote-controlling a running editor.
+Command-line tool for installing [Blazium](https://blazium.app) editors, managing a local project registry, self-updating, remote-controlling a running editor, and deploying to Steam / itch.io / Blazium Games.
 
 Desktop companion: [Blazium Hub](https://blazium.app/dev-tools/download?tool=hub) (bundles this CLI on install).
 
@@ -47,7 +47,7 @@ On Windows, when CLI lives under Program Files (Hub install), update may prompt 
 
 ### 4. Build from source
 
-Requires [Go](https://go.dev/) 1.23.2+.
+Requires [Go](https://go.dev/) 1.25+.
 
 ```text
 git clone https://github.com/blazium-games/blazium-cli.git
@@ -172,3 +172,34 @@ CLI prefs: `%APPDATA%\blazium\cli.json` / `~/.config/blazium/cli.json`.
 2. `.../templates.json` (legacy per-file array or `{base,mono}` bundle)
 3. `.../details.json` (export template manager bundle)
 4. Blazium templates API `GET /api/v1/templates/{deploy_type}/{version}` on `https://blazium.app` (override base URL with `BLAZIUM_CEREBRO_URL`)
+
+## Deploy (Steam / itch.io)
+
+Store deploys live in this CLI. `blazium-toolchain steam setup` only pin-fetches steamcmd. itch.io push and steam-sync use [itchio/butler](https://github.com/itchio/butler) as a Go module (no broth download). Steam Guard is in-process (no steamguard-cli / node-steam-totp).
+
+Optional `blazium-deploy.yml` next to the game (see `blazium-deploy.example.yml`). Strings may use `${NAME}` or `${NAME:-default}`. Secrets come from flags, YAML after expansion, then `BLAZIUM_*` env.
+
+```text
+blazium-cli deploy tools status
+blazium-cli deploy tools ensure
+blazium-cli deploy steam guard totp
+blazium-cli deploy steam guard setup          # interactive; write down the revocation code
+blazium-cli deploy steam upload --dry-run
+blazium-cli deploy steam upload
+blazium-cli deploy steam set-live --build-id ID --beta-key beta
+blazium-cli deploy itch login
+blazium-cli deploy itch push ./build --target user/game:windows
+blazium-cli deploy itch steam-sync --dry-run
+blazium-cli deploy itch steam-logout
+blazium-cli games build --asset build.yml
+```
+
+Example CI: [docs/deploy.example.yml](docs/deploy.example.yml).
+
+Security:
+
+- steam-sync refresh tokens are full Steam account access; `deploy itch steam-logout` deletes local creds.
+- Create a publisher Web API key just for the CLI; it is only used to list/authorize apps.
+- CI uses `BLAZIUM_STEAM_*` / `BLAZIUM_BUTLER_API_KEY`. Do not run `guard setup` on a runner.
+- Write down the Steam revocation code before Finalize. Losing it and the maFile can lock the builder account.
+- After steam-sync assemble, the CLI surfaces butler’s Steamworks SDK warning when `steam_api` files are present.

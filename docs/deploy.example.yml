@@ -1,0 +1,40 @@
+# Example: download export artifacts, then deploy with blazium-cli.
+# Secrets: BLAZIUM_STEAM_USERNAME, BLAZIUM_STEAM_PASSWORD, BLAZIUM_STEAM_SHARED_SECRET,
+# BLAZIUM_BUTLER_API_KEY, BLAZIUM_STEAM_API_KEY, BLAZIUM_STEAM_ID.
+#
+# Steam Guard setup is interactive and must not run on CI; store shared_secret as a secret.
+name: deploy
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Game version
+        required: true
+        default: "0.0.1"
+
+jobs:
+  steam:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install blazium-cli
+        run: |
+          curl -fsSL -o blazium-cli "https://cdn.blazium.app/cli/linux/x86_64/latest/blazium-cli"
+          chmod +x blazium-cli
+          sudo mv blazium-cli /usr/local/bin/blazium-cli
+      - name: Ensure steamcmd
+        run: blazium-cli deploy tools ensure
+      - uses: actions/download-artifact@v4
+        with:
+          path: build
+      - name: Upload to Steam
+        env:
+          BLAZIUM_GAME_VERSION: ${{ inputs.version }}
+          BLAZIUM_STEAM_USERNAME: ${{ secrets.BLAZIUM_STEAM_USERNAME }}
+          BLAZIUM_STEAM_PASSWORD: ${{ secrets.BLAZIUM_STEAM_PASSWORD }}
+          BLAZIUM_STEAM_SHARED_SECRET: ${{ secrets.BLAZIUM_STEAM_SHARED_SECRET }}
+        run: blazium-cli deploy steam upload --format json
+      - name: Push to itch.io
+        env:
+          BLAZIUM_BUTLER_API_KEY: ${{ secrets.BLAZIUM_BUTLER_API_KEY }}
+        run: blazium-cli deploy itch push build --target user/game:linux

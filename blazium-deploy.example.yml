@@ -1,0 +1,24 @@
+steam:
+  app_id: "123456"
+  description: ${BLAZIUM_GAME_VERSION:-dev}
+  username: ${BLAZIUM_STEAM_USERNAME}
+  password: ${BLAZIUM_STEAM_PASSWORD}
+  shared_secret: ${BLAZIUM_STEAM_SHARED_SECRET}
+  api_key: ${BLAZIUM_STEAM_API_KEY}
+  steam_id: ${BLAZIUM_STEAM_ID}
+  depots:
+    - id: "123457"
+      path: build/windows_x86_64
+
+itch:
+  target: user/game
+  api_key: ${BLAZIUM_BUTLER_API_KEY}
+  cache_dir: .steam-sync-cache
+  steam_sync:
+    - app: "123456"
+      target: user/game
+      branch: ${BLAZIUM_STEAM_BRANCH:-public}
+
+games:
+  access_token: ${BLAZIUM_ACCESS_TOKEN}
+  secret_key: ${BLAZIUM_SECRET_KEY}

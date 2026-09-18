@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/blazium-games/blazium-cli/deploy"
+	"github.com/blazium-games/blazium-cli/games"
 	"github.com/blazium-games/blazium-cli/hub"
 	"github.com/blazium-games/blazium-cli/output"
 	"github.com/blazium-games/blazium-cli/remote"
@@ -28,7 +30,7 @@ func main() {
 
 	rootCmd := &cobra.Command{
 		Use:     "blazium-cli <command>",
-		Short:   "Blazium CLI — install editors, manage projects, remote control",
+		Short:   "Blazium CLI — install editors, manage projects, remote control, deploy",
 		Version: version,
 		Long: `Command-line interface for Blazium editors and projects.
 
@@ -46,6 +48,12 @@ Info:
 
 Remote control (running editor):
   remote status|list|exec|eval|logs|debugger|failed-run|autowork|instances|config|enable|doctor
+
+Deploy (Steam / itch.io):
+  deploy tools|steam|itch
+
+Games service (formerly chauffeur):
+  games build|addfiles|genbuild|addchangelog|setfiles
 
 Configuration:
   Editors/projects: %APPDATA%\blazium\hub.json (Windows) or ~/.config/blazium/hub.json
@@ -85,6 +93,12 @@ Configuration:
 	rootCmd.AddCommand(remote.NewCommand(remote.Options{
 		Format: &format,
 		Quiet:  &quiet,
+	}))
+	rootCmd.AddCommand(deploy.NewCommand(deploy.Options{
+		Format: &format,
+	}))
+	rootCmd.AddCommand(games.NewCommand(games.Options{
+		Format: &format,
 	}))
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "version",
