@@ -55,8 +55,28 @@ jobs:
           CANDIDATE="$(go run ./cmd/finalize-cli-version --computed "$COMPUTED" --baseline 0.1.0)"
           echo "simple_version=${CANDIDATE}" >> "$GITHUB_OUTPUT"
 
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v4
+        with:
+          go-version: "1.25"
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: Run application tests
+        run: |
+          set -euo pipefail
+          export CGO_ENABLED=1
+          go test ./...
+
   build:
-    needs: resolve-version
+    needs: [test, resolve-version]
     runs-on: ubuntu-latest
 
     strategy:
@@ -117,12 +137,6 @@ jobs:
             sudo apt-get install -y gcc-multilib g++-multilib
           fi
 
-      - name: Run application tests
-        run: |
-          set -euo pipefail
-          export CGO_ENABLED=1
-          go test ./...
-
       - name: Build application
         run: |
           set -euo pipefail
@@ -142,10 +156,58 @@ jobs:
           name: build-${{ matrix.goos }}-${{ matrix.hub_arch }}
           path: build/${{ matrix.output }}
 
-  # Signing, CDN, and Cerebro run only on merge/push to default or workflow_dispatch.
-  # Kept in a separate job so pull_request builds never pull the Windows signer image.
-  publish:
-    needs: [resolve-version, build]
+  validate:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-linux-x86_64
+          path: artifacts/linux/x86_64
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-linux-x86_32
+          path: artifacts/linux/x86_32
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-windows-x86_64
+          path: artifacts/windows/x86_64
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-windows-x86_32
+          path: artifacts/windows/x86_32
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-darwin-x86_64
+          path: artifacts/darwin/x86_64
+
+      - name: Require every build artifact
+        run: |
+          set -euo pipefail
+          find_bin() {
+            local dir="$1" name="$2"
+            if [ -f "${dir}/${name}" ]; then
+              return 0
+            fi
+            if [ -f "${dir}/build/${name}" ]; then
+              return 0
+            fi
+            echo "missing ${dir}/${name}" >&2
+            return 1
+          }
+          find_bin artifacts/linux/x86_64 blazium-cli
+          find_bin artifacts/linux/x86_32 blazium-cli
+          find_bin artifacts/windows/x86_64 blazium-cli.exe
+          find_bin artifacts/windows/x86_32 blazium-cli.exe
+          find_bin artifacts/darwin/x86_64 blazium-cli
+
+  # Signing runs only after every arch artifact exists, and only off pull requests.
+  sign:
+    needs: [resolve-version, validate]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     strategy:
@@ -236,19 +298,15 @@ jobs:
 
           ls -la ./signed/
 
-      - name: Compute sha256
-        id: digest
+      - name: Record Windows signing
+        if: ${{ matrix.goos == 'windows' }}
         run: |
           set -euo pipefail
-          FILE="build/${{ matrix.output }}"
-          if [[ "${{ matrix.goos }}" == "windows" ]]; then
-            FILE="signed/${{ matrix.output }}"
+          if [[ "${{ steps.windows_artifact.outputs.signed }}" == "true" ]]; then
+            echo sslcom > signed/signing.txt
+          else
+            echo unsigned > signed/signing.txt
           fi
-          SHA256=$(sha256sum "$FILE" | awk '{print $1}')
-          SIZE=$(stat -c%s "$FILE")
-          echo "file=$FILE sha256=$SHA256 size=$SIZE"
-          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
-          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
 
       - name: Upload artifacts (unix)
         uses: actions/upload-artifact@v4
@@ -264,67 +322,12 @@ jobs:
         if: ${{ matrix.goos == 'windows' }}
         with:
           name: signed-windows-${{ matrix.hub_arch }}
-          path: signed/blazium-cli.exe
-
-      # Unversioned "latest" only. Versioned objects are written by the manifest
-      # job from the exact files hashed into cli.json (Windows Authenticode
-      # output can differ from a parallel copy uploaded earlier in this job).
-      - uses: BetaHuhn/do-spaces-action@v2
-        with:
-          access_key: ${{ secrets.DO_ACCESS_KEY }}
-          secret_key: ${{ secrets.DO_SECRET_KEY }}
-          space_name: ${{ secrets.DO_SPACE_NAME }}
-          space_region: ${{ secrets.DO_SPACE_REGION }}
-          source: ${{ startsWith(matrix.goos, 'windows') && './signed' || './build' }}/${{ matrix.output }}
-          out_dir: cli/${{ matrix.goos }}/${{ matrix.hub_arch }}
-
-      - uses: BetaHuhn/do-spaces-action@v2
-        if: ${{ matrix.goos != 'windows' }}
-        with:
-          access_key: ${{ secrets.DO_ACCESS_KEY }}
-          secret_key: ${{ secrets.DO_SECRET_KEY }}
-          space_name: ${{ secrets.DO_SPACE_NAME }}
-          space_region: ${{ secrets.DO_SPACE_REGION }}
-          source: ${{ startsWith(matrix.goos, 'windows') && './signed' || './build' }}/${{ matrix.output }}.sig
-          out_dir: cli/${{ matrix.goos }}/${{ matrix.hub_arch }}
-
-      - name: Updating Cerebro
-        env:
-          URL: https://cdn.blazium.app/cli/${{ matrix.goos }}/${{ matrix.hub_arch }}/${{ needs.resolve-version.outputs.simple_version }}/${{ matrix.output }}
-        run: |
-          if [[ "${{ matrix.goos }}" != "windows" ]]; then
-            SIG_URL="${URL}.sig"
-            SIGNING="gpg"
-          elif [[ "${{ steps.windows_artifact.outputs.signed }}" == "true" ]]; then
-            SIG_URL=""
-            SIGNING="sslcom"
-          else
-            SIG_URL=""
-            SIGNING=""
-          fi
-
-          curl -s -X POST "${{ secrets.CEREBRO_URL }}/api/v1/tools" \
-          -H "Content-Type: application/json" \
-          -H "BLAZIUM_AUTH: ${{ secrets.BLAZIUM_AUTH }}" \
-          -d "$(cat <<EOF
-          {
-            "name": "Blazium CLI",
-            "type": "cli",
-            "version": "${{ needs.resolve-version.outputs.simple_version }}",
-            "os": "${{ matrix.goos }}",
-            "arch": "${{ matrix.hub_arch }}",
-            "file": "$URL",
-            "sig": "$SIG_URL",
-            "sha256": "${{ steps.digest.outputs.sha256 }}",
-            "size": ${{ steps.digest.outputs.size }},
-            "signing": "$SIGNING",
-            "released_on": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-          }
-          EOF
-          )"
+          path: |
+            signed/blazium-cli.exe
+            signed/signing.txt
 
   manifest:
-    needs: [resolve-version, publish]
+    needs: [resolve-version, sign]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
@@ -350,53 +353,14 @@ jobs:
           path: artifacts/darwin/x86_64
 
       - uses: actions/download-artifact@v4
-        continue-on-error: true
-        id: download_windows_64
         with:
           name: signed-windows-x86_64
           path: artifacts/windows/x86_64
 
       - uses: actions/download-artifact@v4
-        continue-on-error: true
-        id: download_windows_32
         with:
           name: signed-windows-x86_32
           path: artifacts/windows/x86_32
-
-      - name: Download Windows CLI fallback from CDN
-        if: steps.download_windows_64.outcome != 'success' || steps.download_windows_32.outcome != 'success'
-        run: |
-          set -euo pipefail
-          MANIFEST="$(curl -fsSL https://cdn.blazium.app/cli/cli.json)"
-          VERSION="${{ needs.resolve-version.outputs.simple_version }}"
-          fetch_arch() {
-            local arch="$1"
-            local dest="artifacts/windows/${arch}/blazium-cli.exe"
-            if [ -f "$dest" ]; then
-              return 0
-            fi
-            mkdir -p "artifacts/windows/${arch}"
-            URL="$(echo "$MANIFEST" | jq -r --arg v "$VERSION" --arg a "$arch" '.versions[$v].downloads[]? | select(.platform=="windows" and .arch==$a) | .download_url' | head -n 1)"
-            if [ -z "$URL" ] || [ "$URL" = "null" ]; then
-              URL="$(echo "$MANIFEST" | jq -r --arg a "$arch" '.versions[.latest].downloads[]? | select(.platform=="windows" and .arch==$a) | .download_url' | head -n 1)"
-            fi
-            if [ -z "$URL" ] || [ "$URL" = "null" ]; then
-              echo "Could not resolve Windows CLI download URL for arch=$arch from cli.json." >&2
-              return 1
-            fi
-            curl -fsSL "$URL" -o "$dest"
-          }
-          if [[ "${{ steps.download_windows_64.outcome }}" != "success" ]]; then
-            fetch_arch x86_64
-          fi
-          if [[ "${{ steps.download_windows_32.outcome }}" != "success" ]]; then
-            fetch_arch x86_32 || true
-          fi
-
-      - name: Ensure Windows x86_64 artifact exists
-        run: |
-          set -euo pipefail
-          test -f artifacts/windows/x86_64/blazium-cli.exe
 
       - name: Normalize artifact layout
         run: |
@@ -417,6 +381,18 @@ jobs:
             normalize_dir "$d"
           done
           ls -laR artifacts/
+
+      - name: Require every signed artifact
+        run: |
+          set -euo pipefail
+          test -f artifacts/linux/x86_64/blazium-cli
+          test -f artifacts/linux/x86_64/blazium-cli.sig
+          test -f artifacts/linux/x86_32/blazium-cli
+          test -f artifacts/linux/x86_32/blazium-cli.sig
+          test -f artifacts/darwin/x86_64/blazium-cli
+          test -f artifacts/darwin/x86_64/blazium-cli.sig
+          test -f artifacts/windows/x86_64/blazium-cli.exe
+          test -f artifacts/windows/x86_32/blazium-cli.exe
 
       - name: Download existing manifest
         continue-on-error: true
@@ -535,6 +511,130 @@ jobs:
           source: cli.json
           out_dir: cli/${{ needs.resolve-version.outputs.simple_version }}
 
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/linux/x86_64/blazium-cli
+          out_dir: cli/linux/x86_64
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/linux/x86_64/blazium-cli.sig
+          out_dir: cli/linux/x86_64
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/linux/x86_32/blazium-cli
+          out_dir: cli/linux/x86_32
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/linux/x86_32/blazium-cli.sig
+          out_dir: cli/linux/x86_32
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/darwin/x86_64/blazium-cli
+          out_dir: cli/darwin/x86_64
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/darwin/x86_64/blazium-cli.sig
+          out_dir: cli/darwin/x86_64
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/windows/x86_64/blazium-cli.exe
+          out_dir: cli/windows/x86_64
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY }}
+          secret_key: ${{ secrets.DO_SECRET_KEY }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: artifacts/windows/x86_32/blazium-cli.exe
+          out_dir: cli/windows/x86_32
+
+      - name: Register with Cerebro
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.simple_version }}
+        run: |
+          set -euo pipefail
+          register() {
+            local os="$1" arch="$2" file="$3" signing="$4"
+            local url="https://cdn.blazium.app/cli/${os}/${arch}/${VERSION}/$(basename "$file")"
+            local sig=""
+            if [[ "$signing" == "gpg" ]]; then
+              sig="${url}.sig"
+            elif [[ "$signing" == "unsigned" ]]; then
+              signing=""
+            fi
+            local sha size
+            sha=$(sha256sum "$file" | awk '{print $1}')
+            size=$(stat -c%s "$file")
+            curl -fsS -X POST "${{ secrets.CEREBRO_URL }}/api/v1/tools" \
+              -H "Content-Type: application/json" \
+              -H "BLAZIUM_AUTH: ${{ secrets.BLAZIUM_AUTH }}" \
+              -d "$(cat <<EOF
+          {
+            "name": "Blazium CLI",
+            "type": "cli",
+            "version": "${VERSION}",
+            "os": "${os}",
+            "arch": "${arch}",
+            "file": "${url}",
+            "sig": "${sig}",
+            "sha256": "${sha}",
+            "size": ${size},
+            "signing": "${signing}",
+            "released_on": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          }
+          EOF
+          )"
+          }
+          win_signing() {
+            local arch="$1"
+            local marker="artifacts/windows/${arch}/signing.txt"
+            if [[ -f "$marker" && "$(tr -d '[:space:]' < "$marker")" == "sslcom" ]]; then
+              echo sslcom
+            else
+              echo unsigned
+            fi
+          }
+          register linux x86_64 artifacts/linux/x86_64/blazium-cli gpg
+          register linux x86_32 artifacts/linux/x86_32/blazium-cli gpg
+          register darwin x86_64 artifacts/darwin/x86_64/blazium-cli gpg
+          register windows x86_64 artifacts/windows/x86_64/blazium-cli.exe "$(win_signing x86_64)"
+          register windows x86_32 artifacts/windows/x86_32/blazium-cli.exe "$(win_signing x86_32)"
+
   github-release:
     needs: [resolve-version, manifest]
     if: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch') }}
@@ -569,48 +669,14 @@ jobs:
           path: artifacts/darwin/x86_64
 
       - uses: actions/download-artifact@v4
-        continue-on-error: true
-        id: download_windows_64
         with:
           name: signed-windows-x86_64
           path: artifacts/windows/x86_64
 
       - uses: actions/download-artifact@v4
-        continue-on-error: true
-        id: download_windows_32
         with:
           name: signed-windows-x86_32
           path: artifacts/windows/x86_32
-
-      - name: Download Windows CLI fallback from CDN
-        if: steps.download_windows_64.outcome != 'success' || steps.download_windows_32.outcome != 'success'
-        run: |
-          set -euo pipefail
-          MANIFEST="$(curl -fsSL https://cdn.blazium.app/cli/cli.json)"
-          VERSION="${{ steps.ver.outputs.version }}"
-          fetch_arch() {
-            local arch="$1"
-            local dest="artifacts/windows/${arch}/blazium-cli.exe"
-            if [ -f "$dest" ]; then
-              return 0
-            fi
-            mkdir -p "artifacts/windows/${arch}"
-            URL="$(echo "$MANIFEST" | jq -r --arg v "$VERSION" --arg a "$arch" '.versions[$v].downloads[]? | select(.platform=="windows" and .arch==$a) | .download_url' | head -n 1)"
-            if [ -z "$URL" ] || [ "$URL" = "null" ]; then
-              URL="$(echo "$MANIFEST" | jq -r --arg a "$arch" '.versions[.latest].downloads[]? | select(.platform=="windows" and .arch==$a) | .download_url' | head -n 1)"
-            fi
-            if [ -z "$URL" ] || [ "$URL" = "null" ]; then
-              echo "Could not resolve Windows CLI download URL for arch=$arch from cli.json." >&2
-              return 1
-            fi
-            curl -fsSL "$URL" -o "$dest"
-          }
-          if [[ "${{ steps.download_windows_64.outcome }}" != "success" ]]; then
-            fetch_arch x86_64
-          fi
-          if [[ "${{ steps.download_windows_32.outcome }}" != "success" ]]; then
-            fetch_arch x86_32 || true
-          fi
 
       - name: Normalize and stage release assets
         run: |
@@ -647,7 +713,13 @@ jobs:
           stage artifacts/windows/x86_64/blazium-cli.exe blazium-cli-windows-x86_64.exe
           stage artifacts/windows/x86_32/blazium-cli.exe blazium-cli-windows-x86_32.exe
           test -f release-assets/blazium-cli-linux-x86_64
+          test -f release-assets/blazium-cli-linux-x86_64.sig
+          test -f release-assets/blazium-cli-linux-x86_32
+          test -f release-assets/blazium-cli-linux-x86_32.sig
+          test -f release-assets/blazium-cli-darwin-x86_64
+          test -f release-assets/blazium-cli-darwin-x86_64.sig
           test -f release-assets/blazium-cli-windows-x86_64.exe
+          test -f release-assets/blazium-cli-windows-x86_32.exe
           ls -la release-assets/
 
       - name: Create or update GitHub Release
