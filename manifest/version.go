@@ -30,8 +30,6 @@ func VersionedUploads(version string) []VersionedUpload {
 		{"linux/x86_32/blazium-cli.sig", "blazium-cli.sig"},
 		{"windows/x86_64/blazium-cli.exe", "blazium-cli.exe"},
 		{"windows/x86_32/blazium-cli.exe", "blazium-cli.exe"},
-		{"darwin/x86_64/blazium-cli", "blazium-cli"},
-		{"darwin/x86_64/blazium-cli.sig", "blazium-cli.sig"},
 	}
 	out := make([]VersionedUpload, 0, len(files))
 	for _, f := range files {

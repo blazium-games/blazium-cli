@@ -87,15 +87,6 @@ func main() {
 			BaseURL:  fmt.Sprintf("https://cdn.blazium.app/cli/windows/x86_32/%s", *version),
 			Signing:  "sslcom",
 		},
-		{
-			Platform: "darwin",
-			Arch:     "x86_64",
-			Filename: "blazium-cli",
-			Path:     filepath.Join(*artifactRoot, "darwin", "x86_64", "blazium-cli"),
-			BaseURL:  fmt.Sprintf("https://cdn.blazium.app/cli/darwin/x86_64/%s", *version),
-			SigURL:   fmt.Sprintf("https://cdn.blazium.app/cli/darwin/x86_64/%s/blazium-cli.sig", *version),
-			Signing:  "gpg",
-		},
 	}
 	var present []manifest.BuildInput
 	for _, b := range builds {

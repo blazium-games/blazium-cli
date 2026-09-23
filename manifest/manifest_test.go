@@ -152,7 +152,7 @@ func TestNextPublishVersion(t *testing.T) {
 func TestVersionedObjectURLs(t *testing.T) {
 	t.Parallel()
 	urls := VersionedObjectURLs("0.1.4")
-	if len(urls) != 5 {
+	if len(urls) != 4 {
 		t.Fatalf("urls=%d", len(urls))
 	}
 	want := "https://cdn.blazium.app/cli/windows/x86_32/0.1.4/blazium-cli.exe"
@@ -174,7 +174,7 @@ func TestVersionedObjectURLs(t *testing.T) {
 func TestVersionedUploads(t *testing.T) {
 	t.Parallel()
 	uploads := VersionedUploads("0.1.6")
-	if len(uploads) != 8 {
+	if len(uploads) != 6 {
 		t.Fatalf("uploads=%d", len(uploads))
 	}
 	wantKey := "cli/windows/x86_32/0.1.6/blazium-cli.exe"
