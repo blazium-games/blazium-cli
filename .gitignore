@@ -1,4 +1,8 @@
 *.exe
+npm/packages/cli-linux-x64/bin/
+npm/packages/cli-linux-ia32/bin/
+npm/packages/cli-win32-x64/bin/
+npm/packages/cli-win32-ia32/bin/
 *.zip
 *.tpz
 build/

@@ -1,0 +1,19 @@
+{
+  "name": "@blazium-engine/cli-linux-ia32",
+  "version": "0.0.0",
+  "description": "Linux x86 binary for @blazium-engine/cli.",
+  "repository": "https://github.com/blazium-games/blazium-cli",
+  "license": "MIT",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "ia32"
+  ],
+  "files": [
+    "bin"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

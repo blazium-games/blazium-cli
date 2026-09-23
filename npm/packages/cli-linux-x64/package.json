@@ -1,0 +1,19 @@
+{
+  "name": "@blazium-engine/cli-linux-x64",
+  "version": "0.0.0",
+  "description": "Linux x64 binary for @blazium-engine/cli.",
+  "repository": "https://github.com/blazium-games/blazium-cli",
+  "license": "MIT",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "bin"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

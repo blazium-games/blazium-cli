@@ -1,0 +1,25 @@
+{
+  "name": "@blazium-engine/cli",
+  "version": "0.0.0",
+  "description": "Blazium CLI. Install editors, manage projects, and remote-control a running Blazium editor.",
+  "repository": "https://github.com/blazium-games/blazium-cli",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "blazium-cli": "bin/blazium-cli.js"
+  },
+  "files": [
+    "bin/blazium-cli.js"
+  ],
+  "optionalDependencies": {
+    "@blazium-engine/cli-linux-x64": "0.0.0",
+    "@blazium-engine/cli-linux-ia32": "0.0.0",
+    "@blazium-engine/cli-win32-x64": "0.0.0",
+    "@blazium-engine/cli-win32-ia32": "0.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
