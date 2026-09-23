@@ -103,11 +103,6 @@ jobs:
             hub_arch: x86_32
             output: blazium-cli.exe
             compiler: i686-w64-mingw32-gcc
-          - goos: darwin
-            goarch: amd64
-            hub_arch: x86_64
-            output: blazium-cli
-            compiler: o64-clang
 
     steps:
       - name: Checkout code
@@ -132,7 +127,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y build-essential clang llvm mingw-w64
+          sudo apt-get install -y build-essential mingw-w64
           if [[ "${{ matrix.goarch }}" == "386" && "${{ matrix.goos }}" == "linux" ]]; then
             sudo apt-get install -y gcc-multilib g++-multilib
           fi
@@ -180,11 +175,6 @@ jobs:
           name: build-windows-x86_32
           path: artifacts/windows/x86_32
 
-      - uses: actions/download-artifact@v4
-        with:
-          name: build-darwin-x86_64
-          path: artifacts/darwin/x86_64
-
       - name: Require every build artifact
         run: |
           set -euo pipefail
@@ -203,7 +193,6 @@ jobs:
           find_bin artifacts/linux/x86_32 blazium-cli
           find_bin artifacts/windows/x86_64 blazium-cli.exe
           find_bin artifacts/windows/x86_32 blazium-cli.exe
-          find_bin artifacts/darwin/x86_64 blazium-cli
 
   # Signing runs only after every arch artifact exists, and only off pull requests.
   sign:
@@ -226,9 +215,6 @@ jobs:
           - goos: windows
             hub_arch: x86_32
             output: blazium-cli.exe
-          - goos: darwin
-            hub_arch: x86_64
-            output: blazium-cli
     steps:
       - uses: actions/checkout@v4
 
@@ -349,11 +335,6 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: signed-darwin-x86_64
-          path: artifacts/darwin/x86_64
-
-      - uses: actions/download-artifact@v4
-        with:
           name: signed-windows-x86_64
           path: artifacts/windows/x86_64
 
@@ -377,7 +358,7 @@ jobs:
               rmdir "${dir}/signed" 2>/dev/null || true
             fi
           }
-          for d in artifacts/linux/x86_64 artifacts/linux/x86_32 artifacts/darwin/x86_64 artifacts/windows/x86_64 artifacts/windows/x86_32; do
+          for d in artifacts/linux/x86_64 artifacts/linux/x86_32 artifacts/windows/x86_64 artifacts/windows/x86_32; do
             normalize_dir "$d"
           done
           ls -laR artifacts/
@@ -389,8 +370,6 @@ jobs:
           test -f artifacts/linux/x86_64/blazium-cli.sig
           test -f artifacts/linux/x86_32/blazium-cli
           test -f artifacts/linux/x86_32/blazium-cli.sig
-          test -f artifacts/darwin/x86_64/blazium-cli
-          test -f artifacts/darwin/x86_64/blazium-cli.sig
           test -f artifacts/windows/x86_64/blazium-cli.exe
           test -f artifacts/windows/x86_32/blazium-cli.exe
 
@@ -448,24 +427,6 @@ jobs:
           space_region: ${{ secrets.DO_SPACE_REGION }}
           source: artifacts/linux/x86_32/blazium-cli.sig
           out_dir: cli/linux/x86_32/${{ needs.resolve-version.outputs.simple_version }}
-
-      - uses: BetaHuhn/do-spaces-action@v2
-        with:
-          access_key: ${{ secrets.DO_ACCESS_KEY }}
-          secret_key: ${{ secrets.DO_SECRET_KEY }}
-          space_name: ${{ secrets.DO_SPACE_NAME }}
-          space_region: ${{ secrets.DO_SPACE_REGION }}
-          source: artifacts/darwin/x86_64/blazium-cli
-          out_dir: cli/darwin/x86_64/${{ needs.resolve-version.outputs.simple_version }}
-
-      - uses: BetaHuhn/do-spaces-action@v2
-        with:
-          access_key: ${{ secrets.DO_ACCESS_KEY }}
-          secret_key: ${{ secrets.DO_SECRET_KEY }}
-          space_name: ${{ secrets.DO_SPACE_NAME }}
-          space_region: ${{ secrets.DO_SPACE_REGION }}
-          source: artifacts/darwin/x86_64/blazium-cli.sig
-          out_dir: cli/darwin/x86_64/${{ needs.resolve-version.outputs.simple_version }}
 
       - uses: BetaHuhn/do-spaces-action@v2
         with:
@@ -553,24 +514,6 @@ jobs:
           secret_key: ${{ secrets.DO_SECRET_KEY }}
           space_name: ${{ secrets.DO_SPACE_NAME }}
           space_region: ${{ secrets.DO_SPACE_REGION }}
-          source: artifacts/darwin/x86_64/blazium-cli
-          out_dir: cli/darwin/x86_64
-
-      - uses: BetaHuhn/do-spaces-action@v2
-        with:
-          access_key: ${{ secrets.DO_ACCESS_KEY }}
-          secret_key: ${{ secrets.DO_SECRET_KEY }}
-          space_name: ${{ secrets.DO_SPACE_NAME }}
-          space_region: ${{ secrets.DO_SPACE_REGION }}
-          source: artifacts/darwin/x86_64/blazium-cli.sig
-          out_dir: cli/darwin/x86_64
-
-      - uses: BetaHuhn/do-spaces-action@v2
-        with:
-          access_key: ${{ secrets.DO_ACCESS_KEY }}
-          secret_key: ${{ secrets.DO_SECRET_KEY }}
-          space_name: ${{ secrets.DO_SPACE_NAME }}
-          space_region: ${{ secrets.DO_SPACE_REGION }}
           source: artifacts/windows/x86_64/blazium-cli.exe
           out_dir: cli/windows/x86_64
 
@@ -631,7 +574,6 @@ jobs:
           }
           register linux x86_64 artifacts/linux/x86_64/blazium-cli gpg
           register linux x86_32 artifacts/linux/x86_32/blazium-cli gpg
-          register darwin x86_64 artifacts/darwin/x86_64/blazium-cli gpg
           register windows x86_64 artifacts/windows/x86_64/blazium-cli.exe "$(win_signing x86_64)"
           register windows x86_32 artifacts/windows/x86_32/blazium-cli.exe "$(win_signing x86_32)"
 
@@ -665,11 +607,6 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: signed-darwin-x86_64
-          path: artifacts/darwin/x86_64
-
-      - uses: actions/download-artifact@v4
-        with:
           name: signed-windows-x86_64
           path: artifacts/windows/x86_64
 
@@ -693,7 +630,7 @@ jobs:
               rmdir "${dir}/signed" 2>/dev/null || true
             fi
           }
-          for d in artifacts/linux/x86_64 artifacts/linux/x86_32 artifacts/darwin/x86_64 artifacts/windows/x86_64 artifacts/windows/x86_32; do
+          for d in artifacts/linux/x86_64 artifacts/linux/x86_32 artifacts/windows/x86_64 artifacts/windows/x86_32; do
             normalize_dir "$d"
           done
           mkdir -p release-assets
@@ -708,16 +645,12 @@ jobs:
           stage artifacts/linux/x86_64/blazium-cli.sig blazium-cli-linux-x86_64.sig
           stage artifacts/linux/x86_32/blazium-cli blazium-cli-linux-x86_32
           stage artifacts/linux/x86_32/blazium-cli.sig blazium-cli-linux-x86_32.sig
-          stage artifacts/darwin/x86_64/blazium-cli blazium-cli-darwin-x86_64
-          stage artifacts/darwin/x86_64/blazium-cli.sig blazium-cli-darwin-x86_64.sig
           stage artifacts/windows/x86_64/blazium-cli.exe blazium-cli-windows-x86_64.exe
           stage artifacts/windows/x86_32/blazium-cli.exe blazium-cli-windows-x86_32.exe
           test -f release-assets/blazium-cli-linux-x86_64
           test -f release-assets/blazium-cli-linux-x86_64.sig
           test -f release-assets/blazium-cli-linux-x86_32
           test -f release-assets/blazium-cli-linux-x86_32.sig
-          test -f release-assets/blazium-cli-darwin-x86_64
-          test -f release-assets/blazium-cli-darwin-x86_64.sig
           test -f release-assets/blazium-cli-windows-x86_64.exe
           test -f release-assets/blazium-cli-windows-x86_32.exe
           ls -la release-assets/
@@ -739,7 +672,6 @@ jobs:
           |----------|------|--------|
           | Linux | x86_64 | \`blazium-cli-linux-x86_64\` |
           | Linux | x86_32 | \`blazium-cli-linux-x86_32\` |
-          | macOS | x86_64 | \`blazium-cli-darwin-x86_64\` |
           | Windows | x86_64 | \`blazium-cli-windows-x86_64.exe\` |
           | Windows | x86_32 | \`blazium-cli-windows-x86_32.exe\` |
 
