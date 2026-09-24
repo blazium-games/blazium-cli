@@ -165,6 +165,7 @@ func LaunchProject(projectArg string, fullProfile bool, quiet bool, crashReporte
 		"resolve_reason": reason,
 		"pid":            result.Instance.PID,
 		"launched":       true,
+		"mode":           result.Mode,
 	}
 	if result.RemoteEnabled {
 		out["instance_id"] = result.Instance.ID

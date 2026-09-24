@@ -505,7 +505,7 @@ Unset policy defaults to latest release.`,
 	projectsCreate.Flags().StringVar(&createName, "name", "", "Project display name (default: folder name)")
 	projectsCmd.AddCommand(projectsAdd, projectsRemove, projectsCreate)
 
-	runLaunch := func(projectArg string, fullProfile bool) error {
+	runLaunch := func(projectArg string, fullProfile bool, launchMode string) error {
 		f, err := Load()
 		if err != nil {
 			return err
@@ -542,6 +542,7 @@ Unset policy defaults to latest release.`,
 			SkipCrashReporter: noCrashReporter,
 			AnalyticsConsent:  consent,
 			AnalyticsMode:     mode,
+			Mode:              launchMode,
 		})
 		if err != nil {
 			return err
@@ -553,6 +554,7 @@ Unset policy defaults to latest release.`,
 			"editor_path":    ed.Path,
 			"resolve_reason": reason,
 			"pid":            result.Instance.PID,
+			"mode":           result.Mode,
 		}
 		if result.RemoteEnabled {
 			out["instance_id"] = result.Instance.ID
@@ -584,7 +586,9 @@ Unset policy defaults to latest release.`,
 	openCmd := &cobra.Command{
 		Use:   "open <project-path-or-name>",
 		Short: "Open a project in the resolved Blazium editor",
-		Long: `Launches the editor with remote_control enabled by default (unique port/token/instance id).
+		Long: `Launches the editor with --editor --path and remote_control enabled by default (unique port/token/instance id).
+
+This opens the editor. It does not run the game. Use run (alias play) to play the main scene.
 
 Editor resolution order:
   1. blazium/editor_version in project.blazium or project.godot
@@ -594,7 +598,7 @@ Editor resolution order:
   blazium-cli open MyGame`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runLaunch(args[0], false)
+			return runLaunch(args[0], false, LaunchModeEditor)
 		},
 	}
 
@@ -604,16 +608,79 @@ Editor resolution order:
 		Use:   "load <project-path-or-name>",
 		Short: "Profile a project (JustAMCP/remote_control/etc.) and launch the editor",
 		Long: `Reads project.blazium or project.godot for JustAMCP, remote_control, and editor settings, then launches
-the same way as open — allocating unique ports/tokens and binding a short instance id
+the editor with --editor --path the same way as open — allocating unique ports/tokens and binding a short instance id
 after remote_control is ready.`,
 		Example: `  blazium-cli load ./MyProject
   blazium-cli load MyGame --quiet`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runLaunch(args[0], true)
+			return runLaunch(args[0], true, LaunchModeEditor)
 		},
 	}
 	launchFlags(loadCmd)
+
+	runCmd := &cobra.Command{
+		Use:     "run <project-path-or-name>",
+		Aliases: []string{"play"},
+		Short:   "Run a project's main scene",
+		Long: `Launches the resolved editor binary with --path and without --editor, so the engine plays the game.
+
+Refuses to start when application/run/main_scene is empty (JSON error: no main scene).
+Does not enable remote_control or wait for the editor health endpoint.`,
+		Example: `  blazium-cli run ./MyProject
+  blazium-cli play MyGame`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runLaunch(args[0], false, LaunchModeGame)
+		},
+	}
+	launchFlags(runCmd)
+
+	projectManagerCmd := &cobra.Command{
+		Use:   "project-manager",
+		Short: "Launch the default editor's project manager",
+		Long: `Starts the default installed editor with --project-manager and no project path.
+
+Editor resolution uses the hub.json default editor policy (latest release unless configured).`,
+		Example: `  blazium-cli project-manager`,
+		Args:    cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			f, err := Load()
+			if err != nil {
+				return err
+			}
+			ed, err := f.ResolveDefault()
+			if err != nil {
+				return err
+			}
+			consent, mode, err := resolveLaunchPrivacy()
+			if err != nil {
+				return err
+			}
+			result, err := LaunchEditor(LaunchOptions{
+				EditorPath:        ed.Path,
+				EditorVersion:     ed.Version,
+				Quiet:             quiet(),
+				CrashReporterPath: crashReporter,
+				SkipCrashReporter: noCrashReporter,
+				AnalyticsConsent:  consent,
+				AnalyticsMode:     mode,
+				Mode:              LaunchModeProjectManager,
+			})
+			if err != nil {
+				return err
+			}
+			return output.Write(format(), map[string]any{
+				"ok":          true,
+				"project":     "",
+				"editor":      ed.Version,
+				"editor_path": ed.Path,
+				"pid":         result.Instance.PID,
+				"mode":        result.Mode,
+			})
+		},
+	}
+	launchFlags(projectManagerCmd)
 
 	handleURICmd := &cobra.Command{
 		Use:   "handle-uri <uri>",
@@ -703,5 +770,5 @@ With --path: ensures only that file (installer/machine use).`,
 	hubRemoteCmd.AddCommand(hubRemoteEnsure)
 
 	addTemplatesCommands(root, opts, format)
-	root.AddCommand(installCmd, uninstallCmd, installPathCmd, editorsCmd, projectsCmd, openCmd, loadCmd, handleURICmd, hubRemoteCmd)
+	root.AddCommand(installCmd, uninstallCmd, installPathCmd, editorsCmd, projectsCmd, openCmd, loadCmd, runCmd, projectManagerCmd, handleURICmd, hubRemoteCmd)
 }

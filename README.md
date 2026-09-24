@@ -119,6 +119,9 @@ blazium-cli install-path
 blazium-cli install-path D:\Blazium\Editors
 blazium-cli open ./MyProject
 blazium-cli load ./MyProject
+blazium-cli run ./MyProject
+blazium-cli play ./MyProject
+blazium-cli project-manager
 blazium-cli handle-uri "blazium://hub"
 blazium-cli projects
 blazium-cli projects add ./MyProject
@@ -136,9 +139,9 @@ Editors install under `{install-path}/{channel}/{version}` (`release`, `prerelea
 | URI | Action |
 |-----|--------|
 | `blazium://hub` | Launch/focus Hub via authenticated remote_control |
-| `blazium://open?path=<path>` | Open project (focus if already running) |
-| `blazium://load?path=<path>` | Load project with full profile |
-| `blazium://project/<encoded-path>` | Shorthand for open |
+| `blazium://open?path=<path>` | Open the project in the editor (`--editor --path`) |
+| `blazium://load?path=<path>` | Open the project in the editor and print the full profile |
+| `blazium://project/<encoded-path>` | Shorthand for open (editor, not the running game) |
 | `blazium://install?version=<ver>&channel=` | Download/install editor |
 | `blazium://register?path=<path>&version=&channel=` | Register a local editor binary |
 
@@ -159,13 +162,17 @@ Unset settings mean **latest release** among installed editors.
 - `default_editor_version`: `latest` or a concrete version (default `latest`)
 - Optional hard pin `default_editor` wins when that version is installed
 
-### Open / load
+### Launch modes
 
-`open` and `load` launch the editor with a unique remote_control port + token by default (`remote.enable_on_open`, default true). After the editor's `/v1/health` is up, the CLI assigns a short **6-character instance id** via `POST /v1/instance`.
+`open` and `load` start the editor with `--editor --path`. They do not run the game, even when `application/run/main_scene` is set. `load` also prints a project profile (JustAMCP / remote_control / editor_version / features).
 
-`load` also prints a project profile (JustAMCP / remote_control / editor_version / features).
+Both attach remote_control by default (`remote.enable_on_open`, default true). After the editor's `/v1/health` is up, the CLI assigns a short **6-character instance id** via `POST /v1/instance`.
 
-Disable remote on launch: `blazium-cli remote config set enable-on-open false`.
+`run` (alias `play`) starts the game with `--path` and without `--editor`. If `application/run/main_scene` is empty, the CLI returns a JSON error (`no main scene`) and does not start the binary. Remote control stays off.
+
+`project-manager` starts the default editor with `--project-manager` and no project path.
+
+Disable remote on editor launch: `blazium-cli remote config set enable-on-open false`.
 
 ## Remote control
 

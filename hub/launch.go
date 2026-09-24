@@ -13,7 +13,16 @@ import (
 	"github.com/blazium-games/blazium-cli/remote"
 )
 
-// LaunchOptions configures editor launch with remote_control / JustAMCP.
+const (
+	// LaunchModeEditor opens the project in the editor (--editor --path).
+	LaunchModeEditor = "editor"
+	// LaunchModeGame runs the project's main scene (--path, no --editor).
+	LaunchModeGame = "game"
+	// LaunchModeProjectManager starts the editor project manager (--project-manager).
+	LaunchModeProjectManager = "project_manager"
+)
+
+// LaunchOptions configures editor, game, or project-manager launch.
 type LaunchOptions struct {
 	EditorPath        string
 	EditorVersion     string
@@ -24,14 +33,17 @@ type LaunchOptions struct {
 	SkipCrashReporter bool
 	AnalyticsConsent  string
 	AnalyticsMode     string
+	// Mode is editor, game, or project_manager. Empty means editor.
+	Mode string
 }
 
-// LaunchResult describes a launched editor instance.
+// LaunchResult describes a launched editor or game process.
 type LaunchResult struct {
 	Instance      remote.RemoteInstance
 	Args          []string
 	RemoteEnabled bool
 	MCPEnabled    bool
+	Mode          string
 }
 
 // DefaultCrashReporterDest is the Hub sidecar path under BLAZIUM (same as update.CrashReporterDest).
@@ -79,9 +91,9 @@ func crashReporterFileExists(path string) bool {
 	return err == nil && !st.IsDir()
 }
 
-// BuildEditorArgs builds argv after the editor binary (or after macOS --args).
+// BuildEditorArgs builds argv for editor mode: --path, then --editor, then remote and sidecar flags.
 func BuildEditorArgs(projectPath string, remotePort int, remoteToken string, enableRemote bool, mcpPort int, enableMCP bool, crashReporterPath string) []string {
-	args := []string{"--path", projectPath}
+	args := []string{"--path", projectPath, "--editor"}
 	if enableRemote {
 		args = append(args,
 			"--enable-remote-control",
@@ -96,6 +108,47 @@ func BuildEditorArgs(projectPath string, remotePort int, remoteToken string, ena
 		args = append(args, "--crash-reporter", p)
 	}
 	return args
+}
+
+// BuildGameArgs builds argv for playing a project. Remote control stays off.
+func BuildGameArgs(projectPath string, crashReporterPath string) []string {
+	args := []string{"--path", projectPath}
+	if p := strings.TrimSpace(crashReporterPath); p != "" {
+		args = append(args, "--crash-reporter", p)
+	}
+	return args
+}
+
+// BuildProjectManagerArgs builds argv for the editor project manager.
+func BuildProjectManagerArgs(crashReporterPath string) []string {
+	args := []string{"--project-manager"}
+	if p := strings.TrimSpace(crashReporterPath); p != "" {
+		args = append(args, "--crash-reporter", p)
+	}
+	return args
+}
+
+// ProjectMainScene returns application/run/main_scene, or empty when unset.
+func ProjectMainScene(projectPath string) (string, error) {
+	text, err := ReadProjectSettingsText(projectPath)
+	if err != nil {
+		return "", err
+	}
+	return firstString(parseSectionSettings(text), "application/run/main_scene", "run/main_scene"), nil
+}
+
+func (opts LaunchOptions) resolvedMode() string {
+	if strings.TrimSpace(opts.Mode) == "" {
+		return LaunchModeEditor
+	}
+	return opts.Mode
+}
+
+func resolvedCrashPath(opts LaunchOptions) string {
+	if opts.SkipCrashReporter {
+		return ""
+	}
+	return ResolveCrashReporterPath(opts.CrashReporterPath)
 }
 
 // NormalizeAnalyticsConsent maps Hub/CLI consent values to accepted|declined.
@@ -140,9 +193,20 @@ func AppendAnalyticsArgs(args []string, consent, mode string) []string {
 	return args
 }
 
-// LaunchEditor starts the editor, registers the instance, waits for health, and POSTs instance id.
+// LaunchEditor starts the editor, a game, or the project manager.
+// Editor mode registers the instance, waits for health, and POSTs the instance id.
+// Game mode refuses to start when the project has no main scene and does not wait for remote control.
 func LaunchEditor(opts LaunchOptions) (LaunchResult, error) {
 	output.Quiet = opts.Quiet
+	switch opts.resolvedMode() {
+	case LaunchModeGame:
+		return launchGame(opts)
+	case LaunchModeProjectManager:
+		return launchProjectManager(opts)
+	case LaunchModeEditor:
+	default:
+		return LaunchResult{}, fmt.Errorf("invalid launch mode %q", opts.Mode)
+	}
 
 	cfg, _, err := remote.PruneDeadInstances(nil)
 	if err != nil {
@@ -183,10 +247,7 @@ func LaunchEditor(opts LaunchOptions) (LaunchResult, error) {
 		}
 	}
 
-	crashPath := ""
-	if !opts.SkipCrashReporter {
-		crashPath = ResolveCrashReporterPath(opts.CrashReporterPath)
-	}
+	crashPath := resolvedCrashPath(opts)
 	args := BuildEditorArgs(opts.ProjectPath, remotePort, token, enableRemote, mcpPort, enableMCP, crashPath)
 	args = AppendAnalyticsArgs(args, opts.AnalyticsConsent, opts.AnalyticsMode)
 	pid, err := startEditorProcess(opts.EditorPath, args)
@@ -210,7 +271,7 @@ func LaunchEditor(opts LaunchOptions) (LaunchResult, error) {
 		StartedAt:     time.Now().UTC(),
 	}
 
-	result := LaunchResult{Instance: inst, Args: args, RemoteEnabled: enableRemote, MCPEnabled: enableMCP}
+	result := LaunchResult{Instance: inst, Args: args, RemoteEnabled: enableRemote, MCPEnabled: enableMCP, Mode: LaunchModeEditor}
 
 	if !enableRemote {
 		return result, nil
@@ -238,6 +299,39 @@ func LaunchEditor(opts LaunchOptions) (LaunchResult, error) {
 		return result, err
 	}
 	return result, nil
+}
+
+func launchGame(opts LaunchOptions) (LaunchResult, error) {
+	scene, err := ProjectMainScene(opts.ProjectPath)
+	if err != nil {
+		return LaunchResult{}, err
+	}
+	if scene == "" {
+		return LaunchResult{}, fmt.Errorf("no main scene")
+	}
+	args := AppendAnalyticsArgs(BuildGameArgs(opts.ProjectPath, resolvedCrashPath(opts)), opts.AnalyticsConsent, opts.AnalyticsMode)
+	return startDetached(opts, args, LaunchModeGame)
+}
+
+func launchProjectManager(opts LaunchOptions) (LaunchResult, error) {
+	args := AppendAnalyticsArgs(BuildProjectManagerArgs(resolvedCrashPath(opts)), opts.AnalyticsConsent, opts.AnalyticsMode)
+	return startDetached(opts, args, LaunchModeProjectManager)
+}
+
+func startDetached(opts LaunchOptions, args []string, mode string) (LaunchResult, error) {
+	pid, err := startEditorProcess(opts.EditorPath, args)
+	if err != nil {
+		return LaunchResult{}, err
+	}
+	inst := remote.RemoteInstance{
+		ProjectPath:   opts.ProjectPath,
+		ProjectName:   opts.Profile.Name,
+		PID:           pid,
+		EditorPath:    opts.EditorPath,
+		EditorVersion: opts.EditorVersion,
+		StartedAt:     time.Now().UTC(),
+	}
+	return LaunchResult{Instance: inst, Args: args, Mode: mode}, nil
 }
 
 func startEditorProcess(editorPath string, args []string) (int, error) {

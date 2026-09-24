@@ -35,7 +35,7 @@ func main() {
 		Long: `Command-line interface for Blazium editors and projects.
 
 Hub commands:
-  install, uninstall, editors, install-path, templates, open, load, projects, upgrade, update
+  install, uninstall, editors, install-path, templates, open, load, run, project-manager, projects, upgrade, update
 
 Templates:
   templates list|download|path  (individual files, platform sets, runtime, full .tpz)
