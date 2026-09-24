@@ -37,7 +37,18 @@ npx @blazium-engine/cli
 npm install -g @blazium-engine/cli
 ```
 
-The command is `blazium-cli`. npm uses the matching optional platform package when it is installed. It downloads that same version from the CDN only when the optional package is absent.
+The command is `blazium-cli`. Install `@blazium-engine/cli`. License: MIT.
+
+npm installs one of these optional binaries for the current platform:
+
+| Package | Platform | CPU |
+|---------|----------|-----|
+| `@blazium-engine/cli-linux-x64` | linux | x64 |
+| `@blazium-engine/cli-linux-ia32` | linux | ia32 |
+| `@blazium-engine/cli-win32-x64` | win32 | x64 |
+| `@blazium-engine/cli-win32-ia32` | win32 | ia32 |
+
+When that optional package is installed, its binary is used and nothing is downloaded. The CDN download runs only if that package is absent.
 
 ### 2. GitHub Releases
 
