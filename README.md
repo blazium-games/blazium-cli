@@ -28,7 +28,18 @@ Repository: [github.com/blazium-games/blazium-cli](https://github.com/blazium-ga
 
 ## Install
 
-### 1. GitHub Releases
+### 1. npm
+
+Linux and Windows, x64 and ia32:
+
+```text
+npx @blazium-engine/cli
+npm install -g @blazium-engine/cli
+```
+
+The command is `blazium-cli`. npm uses the matching optional platform package when it is installed. It downloads that same version from the CDN only when the optional package is absent.
+
+### 2. GitHub Releases
 
 Download a binary for your platform from:
 
@@ -45,7 +56,7 @@ Published binaries are Linux and Windows only. A CLI you build yourself on macOS
 
 Non-Windows assets may include a matching `.sig` (GPG detach-sign). Put the binary on your `PATH` and rename to `blazium-cli` / `blazium-cli.exe` if you prefer.
 
-### 2. CDN manifest
+### 3. CDN manifest
 
 Published builds, URLs, and checksums:
 
@@ -53,7 +64,7 @@ Published builds, URLs, and checksums:
 
 Paths look like `https://cdn.blazium.app/cli/{os}/{arch}/{version}/blazium-cli[.exe]`.
 
-### 3. Self-update
+### 4. Self-update
 
 If you already have a build:
 
@@ -64,7 +75,7 @@ blazium-cli update apply --product cli
 
 On Windows, when CLI lives under Program Files (Hub install), update may prompt for elevation (UAC).
 
-### 4. Build from source
+### 5. Build from source
 
 Requires [Go](https://go.dev/) 1.25+.
 

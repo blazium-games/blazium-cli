@@ -11,9 +11,18 @@
     "ia32"
   ],
   "files": [
-    "bin"
+    "bin",
+    "README.md",
+    "LICENSE"
   ],
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "homepage": "https://blazium.app",
+  "bugs": "https://github.com/blazium-games/blazium-cli/issues",
+  "author": "Blazium Games",
+  "keywords": [
+    "blazium",
+    "cli"
+  ]
 }
