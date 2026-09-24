@@ -73,7 +73,7 @@ func TestBuildEditorArgs(t *testing.T) {
 	joined := filepath.ToSlash(args[0] + args[1])
 	_ = joined
 	want := []string{
-		"--path", "/proj",
+		"--path", "/proj", "--editor",
 		"--enable-remote-control",
 		"--remote-control-port=6508",
 		"--remote-control-token=tok",
@@ -92,7 +92,7 @@ func TestBuildEditorArgs(t *testing.T) {
 
 func TestBuildEditorArgsCrashReporter(t *testing.T) {
 	args := BuildEditorArgs("/proj", 0, "", false, 0, false, `C:\Blazium\Hub\crash_reporter.exe`)
-	want := []string{"--path", "/proj", "--crash-reporter", `C:\Blazium\Hub\crash_reporter.exe`}
+	want := []string{"--path", "/proj", "--editor", "--crash-reporter", `C:\Blazium\Hub\crash_reporter.exe`}
 	if len(args) != len(want) {
 		t.Fatalf("args=%v", args)
 	}
@@ -100,6 +100,60 @@ func TestBuildEditorArgsCrashReporter(t *testing.T) {
 		if args[i] != want[i] {
 			t.Fatalf("args[%d]=%q want %q", i, args[i], want[i])
 		}
+	}
+}
+
+func TestBuildGameArgsOmitsEditor(t *testing.T) {
+	args := BuildGameArgs("/proj", "")
+	want := []string{"--path", "/proj"}
+	if len(args) != len(want) || args[0] != want[0] || args[1] != want[1] {
+		t.Fatalf("args=%v", args)
+	}
+	for _, a := range args {
+		if a == "--editor" {
+			t.Fatal("game args must not include --editor")
+		}
+	}
+}
+
+func TestBuildProjectManagerArgs(t *testing.T) {
+	args := BuildProjectManagerArgs("")
+	if len(args) != 1 || args[0] != "--project-manager" {
+		t.Fatalf("args=%v", args)
+	}
+}
+
+func TestProjectMainSceneMissingDoesNotLaunch(t *testing.T) {
+	dir := t.TempDir()
+	body := "; Engine configuration file.\nconfig_version=5\n\n[application]\n\nconfig/name=\"New\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "project.blazium"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	scene, err := ProjectMainScene(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scene != "" {
+		t.Fatalf("scene %q", scene)
+	}
+	_, err = launchGame(LaunchOptions{EditorPath: "blazium", ProjectPath: dir, Mode: LaunchModeGame})
+	if err == nil || err.Error() != "no main scene" {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestProjectMainScenePresent(t *testing.T) {
+	dir := t.TempDir()
+	body := "[application]\n\nrun/main_scene=\"res://main.tscn\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "project.godot"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	scene, err := ProjectMainScene(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scene != "res://main.tscn" {
+		t.Fatalf("scene %q", scene)
 	}
 }
 
