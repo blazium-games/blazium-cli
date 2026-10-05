@@ -24,12 +24,13 @@ func NewCommand(opts Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update",
 		Short: "Check for or apply Blazium product updates",
-		Long: `Check CDN catalogs for updates to blazium-cli, Blazium Hub, Blazium Crash Reporter, Blazium Toolchain, editors, and export templates.
-Apply downloads and installs blazium-cli, Blazium Hub (via the published installer), the Blazium Crash Reporter sidecar, or the Blazium Toolchain manager.`,
+		Long: `Check CDN catalogs for updates to blazium-cli, Blazium Hub, BlaziumLauncher, Blazium Crash Reporter, Blazium Toolchain, editors, and export templates.
+Apply downloads and installs blazium-cli, Blazium Hub, BlaziumLauncher (via the published installer), the Blazium Crash Reporter sidecar, or the Blazium Toolchain manager.`,
 		Example: `  blazium-cli update check
   blazium-cli update check --product cli --json
   blazium-cli update apply --product cli
   blazium-cli update apply --product hub --current 0.1.0 --install-root "C:\\Program Files\\Blazium" --launch
+  blazium-cli update apply --product launcher --install-root "C:\\Program Files\\Blazium\\Games" --launch
   blazium-cli update apply --product crash_reporter --install-root "C:\\Program Files\\Blazium"
   blazium-cli update apply --product toolchain --install-root "C:\\Program Files\\Blazium"`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -85,7 +86,7 @@ func newCheckCommand(opts Options) *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().StringVar(&product, "product", "all", "Product(s): all, cli, hub, crash_reporter, toolchain, editor, templates (comma-separated)")
+	cmd.Flags().StringVar(&product, "product", "all", "Product(s): all, cli, hub, launcher, crash_reporter, toolchain, editor, templates (comma-separated)")
 	cmd.Flags().StringVar(&channel, "channel", "release", "Editor/templates channel: release or nightly")
 	cmd.Flags().StringVar(&hubCurrent, "current", "", "Current Hub version (also BLAZIUM_HUB_VERSION)")
 	cmd.Flags().StringVar(&installRoot, "install-root", "", "Hub install root for VERSION discovery / apply")
@@ -172,6 +173,40 @@ func newApplyCommand(opts Options) *cobra.Command {
 					"install_root":   plan.InstallRoot,
 					"launch":         plan.Launch,
 				})
+			case "launcher":
+				plan, err := ResolveLauncherPlan(hubCurrent, target, installRoot)
+				if err != nil {
+					return err
+				}
+				available := plan.Current == "" || cdn.CompareSemver(plan.Version, plan.Current) > 0
+				if dryRun {
+					return output.Write(formatOf(opts), map[string]any{
+						"dry_run":          true,
+						"product":          "launcher",
+						"current_version":  plan.Current,
+						"target_version":   plan.Version,
+						"update_available": available,
+						"url":              plan.URL,
+						"sha256":           plan.SHA256,
+						"filename":         plan.Filename,
+						"size":             plan.Size,
+						"install_root":     plan.InstallRoot,
+						"launch":           launch,
+					})
+				}
+				plan, err = ApplyLauncher(hubCurrent, target, installRoot, launch)
+				if err != nil {
+					return err
+				}
+				return output.Write(formatOf(opts), map[string]any{
+					"ok":             true,
+					"product":        "launcher",
+					"previous":       plan.Current,
+					"installed":      plan.Version,
+					"installer_path": plan.InstallerPath,
+					"install_root":   plan.InstallRoot,
+					"launch":         plan.Launch,
+				})
 			case "crash_reporter":
 				plan, err := ResolveCrashReporterPlan(target, installRoot)
 				if err != nil {
@@ -237,16 +272,16 @@ func newApplyCommand(opts Options) *cobra.Command {
 					"path":      plan.DestPath,
 				})
 			default:
-				return fmt.Errorf("apply supports --product cli|hub|crash_reporter|toolchain (got %q); editor/templates use install / templates download", product)
+				return fmt.Errorf("apply supports --product cli|hub|launcher|crash_reporter|toolchain (got %q); editor/templates use install / templates download", product)
 			}
 		},
 	}
-	cmd.Flags().StringVar(&product, "product", "", "Product to update: cli, hub, crash_reporter, or toolchain (required)")
+	cmd.Flags().StringVar(&product, "product", "", "Product to update: cli, hub, launcher, crash_reporter, or toolchain (required)")
 	cmd.Flags().StringVar(&target, "target", "", "Specific version (default: manifest latest)")
-	cmd.Flags().StringVar(&hubCurrent, "current", "", "Current Hub version")
-	cmd.Flags().StringVar(&installRoot, "install-root", "", "Hub install directory for Inno /DIR=")
+	cmd.Flags().StringVar(&hubCurrent, "current", "", "Current Hub or launcher version")
+	cmd.Flags().StringVar(&installRoot, "install-root", "", "Hub install root, or the Games directory for launcher")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show plan without downloading/installing")
-	cmd.Flags().BoolVar(&launch, "launch", false, "After Hub install, start Hub (Windows: Inno /LAUNCH)")
+	cmd.Flags().BoolVar(&launch, "launch", false, "After Hub or launcher install, start the app (Windows: Inno /LAUNCH)")
 	_ = cmd.MarkFlagRequired("product")
 	return cmd
 }

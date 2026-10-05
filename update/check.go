@@ -55,7 +55,7 @@ func cacheBust(raw string) string {
 // Check runs product update checks.
 func Check(products []string, opts CheckOptions) ([]ProductStatus, error) {
 	if len(products) == 0 || (len(products) == 1 && products[0] == "all") {
-		products = []string{"hub", "cli", "crash_reporter", "toolchain", "editor", "templates"}
+		products = []string{"hub", "launcher", "cli", "crash_reporter", "toolchain", "editor", "templates"}
 	}
 	channel := strings.TrimSpace(opts.Channel)
 	if channel == "" {
@@ -68,6 +68,8 @@ func Check(products []string, opts CheckOptions) ([]ProductStatus, error) {
 			out = append(out, checkCLI(opts.CLIVersion))
 		case "hub":
 			out = append(out, checkHub(opts.HubCurrent, opts.InstallRoot))
+		case "launcher":
+			out = append(out, checkLauncher(opts.HubCurrent, opts.InstallRoot))
 		case "crash_reporter":
 			out = append(out, checkCrashReporter(opts.InstallRoot))
 		case "toolchain":
@@ -136,6 +138,42 @@ func checkHub(current, installRoot string) ProductStatus {
 	}
 	if st.UpdateAvailable {
 		st.Suggestion = "blazium-cli update apply --product hub"
+	}
+	return st
+}
+
+func checkLauncher(current, installRoot string) ProductStatus {
+	st := ProductStatus{Product: "launcher"}
+	root := resolveLauncherInstallRoot(installRoot)
+	cur := resolveLauncherCurrent(current, root)
+	st.CurrentVersion = cur
+	doc, err := fetchToolManifest(launcherManifestURLs())
+	if err != nil {
+		st.Error = err.Error()
+		return st
+	}
+	latest := strings.TrimSpace(doc.Latest)
+	st.LatestVersion = latest
+	if latest == "" {
+		st.Error = "launcher manifest has no latest version"
+		return st
+	}
+	dl, err := pickDownload(doc, latest, runtime.GOOS, runtimeArch())
+	if err != nil {
+		st.Error = err.Error()
+		return st
+	}
+	st.URL = dl.DownloadURL
+	st.Filename = dl.Filename
+	st.SHA256 = dl.Sha256
+	st.Size = dl.Size
+	if cur == "" {
+		st.UpdateAvailable = true
+	} else {
+		st.UpdateAvailable = cdn.CompareSemver(latest, cur) > 0
+	}
+	if st.UpdateAvailable {
+		st.Suggestion = "blazium-cli update apply --product launcher"
 	}
 	return st
 }

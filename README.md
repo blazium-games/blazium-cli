@@ -94,7 +94,11 @@ If you already have a build:
 ```text
 blazium-cli upgrade
 blazium-cli update apply --product cli
+blazium-cli update apply --product hub --install-root "C:\Program Files\Blazium"
+blazium-cli update apply --product launcher --install-root "C:\Program Files\Blazium\Games"
 ```
+
+`--product launcher` installs BlaziumLauncher into `{autopf}\Blazium\Games` (or `/opt/blazium/games`). On Windows the setup is started with `/NOCLI`, so an existing `blazium-cli` protocol handler stays in place. `--launch` adds Inno `/LAUNCH`.
 
 On Windows, when CLI lives under Program Files (Hub install), update may prompt for elevation (UAC).
 
