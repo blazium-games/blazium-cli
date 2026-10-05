@@ -156,8 +156,12 @@ Editors install under `{install-path}/{channel}/{version}` (`release`, `prerelea
 | `blazium://project/<encoded-path>` | Shorthand for open (editor, not the running game) |
 | `blazium://install?version=<ver>&channel=` | Download/install editor |
 | `blazium://register?path=<path>&version=&channel=` | Register a local editor binary |
+| `blazium://install/<uuid>` | Forward to the Games launcher. Does not install an editor |
+| `blazium://game/<uuid>` | Forward to the Games launcher |
+| `blazium://buy/<uuid>` | Forward `open_uri` to the Games launcher. Does not install |
+| `blazium://friends`, `blazium://chat`, `blazium://library`, and the other launcher hosts | Forward to the Games launcher |
 
-OS installers register `blazium://` to **this CLI** (`handle-uri`). For Hub, CLI loads `hub_remote.json` from the **user** path then the **machine** path (`%ProgramData%\blazium\` / `/etc/blazium/`), launches Hub if needed, waits for `/v1/health`, then `exec` `show_hub` / `focus_window`. Editors use the same launch → wait → talk pattern with per-instance tokens in `cli.json`.
+OS installers register `blazium://` to **this CLI** (`handle-uri`) when the CLI is installed. For Hub, CLI loads `hub_remote.json` from the **user** path then the **machine** path (`%ProgramData%\blazium\` / `/etc/blazium/`), launches Hub if needed, waits for `/v1/health`, then `exec` `show_hub` / `focus_window`. Games links use `launcher_remote.json` and port **39220**. Hub stays on port **39218**. `launcher-remote ensure` does not rotate a valid token. Editors use the same launch → wait → talk pattern with per-instance tokens in `cli.json`.
 
 ```text
 blazium-cli hub-remote ensure
