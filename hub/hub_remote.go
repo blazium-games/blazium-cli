@@ -212,19 +212,27 @@ func ResolveHubExecutable() (string, error) {
 	if runtime.GOOS == "windows" {
 		if root := strings.TrimSpace(os.Getenv("BLAZIUM")); root != "" {
 			candidates = append(candidates,
+				filepath.Join(root, "Engine", "BlaziumHub.exe"),
 				filepath.Join(root, "Hub", "BlaziumHub.exe"),
 				filepath.Join(root, "BlaziumHub.exe"),
 			)
 		}
 		if pf := os.Getenv("ProgramFiles"); pf != "" {
-			candidates = append(candidates, filepath.Join(pf, "Blazium", "Hub", "BlaziumHub.exe"))
+			candidates = append(candidates,
+				filepath.Join(pf, "Blazium", "Engine", "BlaziumHub.exe"),
+				filepath.Join(pf, "Blazium", "Hub", "BlaziumHub.exe"),
+			)
 		}
 		if local := os.Getenv("LOCALAPPDATA"); local != "" {
-			candidates = append(candidates, filepath.Join(local, "Blazium", "Hub", "BlaziumHub.exe"))
+			candidates = append(candidates,
+				filepath.Join(local, "Blazium", "Engine", "BlaziumHub.exe"),
+				filepath.Join(local, "Blazium", "Hub", "BlaziumHub.exe"),
+			)
 		}
 		if exe, err := os.Executable(); err == nil {
 			dir := filepath.Dir(exe)
 			candidates = append(candidates,
+				filepath.Join(dir, "Engine", "BlaziumHub.exe"),
 				filepath.Join(dir, "Hub", "BlaziumHub.exe"),
 				filepath.Join(dir, "BlaziumHub.exe"),
 			)
@@ -232,11 +240,13 @@ func ResolveHubExecutable() (string, error) {
 	} else {
 		if root := strings.TrimSpace(os.Getenv("BLAZIUM")); root != "" {
 			candidates = append(candidates,
+				filepath.Join(root, "engine", "blazium-hub"),
 				filepath.Join(root, "bin", "blazium-hub"),
 				filepath.Join(root, "blazium-hub"),
 			)
 		}
 		candidates = append(candidates,
+			"/opt/blazium/engine/blazium-hub",
 			"/opt/blazium/bin/blazium-hub",
 			"/usr/local/bin/blazium-hub",
 			"/usr/bin/blazium-hub",

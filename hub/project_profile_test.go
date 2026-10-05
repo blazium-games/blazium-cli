@@ -3,6 +3,7 @@ package hub
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -263,5 +264,21 @@ func TestResolveCrashReporterPathFallback(t *testing.T) {
 	got := ResolveCrashReporterPath("")
 	if got != dest {
 		t.Fatalf("got %q want %q", got, dest)
+	}
+	if runtime.GOOS != "windows" {
+		return
+	}
+	if err := os.Remove(dest); err != nil {
+		t.Fatal(err)
+	}
+	legacy := filepath.Join(root, "Hub", "crash_reporter.exe")
+	if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacy, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := ResolveCrashReporterPath(""); got != legacy {
+		t.Fatalf("got %q want %q", got, legacy)
 	}
 }

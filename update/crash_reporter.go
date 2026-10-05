@@ -48,7 +48,7 @@ func crashReporterManifestURLs() []string {
 func CrashReporterDest(installRoot string) string {
 	root := resolveInstallRoot(installRoot)
 	if runtime.GOOS == "windows" {
-		return filepath.Join(root, "Hub", "crash_reporter.exe")
+		return filepath.Join(root, "crash_reporter.exe")
 	}
 	return filepath.Join(root, "bin", "crash_reporter")
 }

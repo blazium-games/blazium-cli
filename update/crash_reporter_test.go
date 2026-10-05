@@ -28,7 +28,7 @@ func crashReporterManifestJSON(latest, platform, arch, url, sha string, size int
 func TestCrashReporterDest(t *testing.T) {
 	got := CrashReporterDest(`C:\Blazium`)
 	if runtime.GOOS == "windows" {
-		want := filepath.Join(`C:\Blazium`, "Hub", "crash_reporter.exe")
+		want := filepath.Join(`C:\Blazium`, "crash_reporter.exe")
 		if got != want {
 			t.Fatalf("dest=%s want %s", got, want)
 		}

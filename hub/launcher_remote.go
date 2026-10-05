@@ -211,18 +211,33 @@ func launcherClient(f LauncherRemoteFile, timeout time.Duration) *remote.Client 
 	})
 }
 
-func resolveLauncherExecutable(recorded string) (string, error) {
+func launcherExecutableCandidates(recorded string) []string {
 	var candidates []string
-	if recorded != "" {
-		candidates = append(candidates, recorded)
-	}
 	if runtime.GOOS == "windows" {
+		if pf := os.Getenv("ProgramFiles"); pf != "" {
+			candidates = append(candidates, filepath.Join(pf, "Blazium", "Games", "BlaziumLauncher.exe"))
+		}
+		if root := strings.TrimSpace(os.Getenv("BLAZIUM")); root != "" {
+			candidates = append(candidates, filepath.Join(root, "Games", "BlaziumLauncher.exe"))
+		}
+		if recorded != "" {
+			candidates = append(candidates, recorded)
+		}
 		if pf := os.Getenv("ProgramFiles"); pf != "" {
 			candidates = append(candidates, filepath.Join(pf, "Blazium Games", "BlaziumGames.exe"))
 		}
 	} else {
-		candidates = append(candidates, "/opt/blazium-games/bin/blazium-games")
+		candidates = append(candidates, "/opt/blazium/games/BlaziumLauncher")
+		if recorded != "" {
+			candidates = append(candidates, recorded)
+		}
+		candidates = append(candidates, "/opt/blazium-games/bin/blazium-games", "/opt/blazium-games/BlaziumGames")
 	}
+	return candidates
+}
+
+func resolveLauncherExecutable(recorded string) (string, error) {
+	candidates := launcherExecutableCandidates(recorded)
 	for _, c := range candidates {
 		if c == "" {
 			continue

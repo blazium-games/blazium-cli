@@ -61,7 +61,7 @@ func DefaultCrashReporterDest() string {
 		}
 	}
 	if runtime.GOOS == "windows" {
-		return filepath.Join(root, "Hub", "crash_reporter.exe")
+		return filepath.Join(root, "crash_reporter.exe")
 	}
 	return filepath.Join(root, "bin", "crash_reporter")
 }
@@ -82,6 +82,13 @@ func ResolveCrashReporterPath(explicit string) string {
 	dest := DefaultCrashReporterDest()
 	if crashReporterFileExists(dest) {
 		return dest
+	}
+	legacy := ""
+	if runtime.GOOS == "windows" {
+		legacy = filepath.Join(filepath.Dir(dest), "Hub", "crash_reporter.exe")
+	}
+	if legacy != "" && crashReporterFileExists(legacy) {
+		return legacy
 	}
 	return ""
 }

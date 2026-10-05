@@ -2,7 +2,7 @@
 
 Command-line tool for installing [Blazium](https://blazium.app) editors, managing a local project registry, self-updating, remote-controlling a running editor, and deploying to Steam and itch.io.
 
-Desktop companion: [Blazium Hub](https://blazium.app/dev-tools/download?tool=hub) (bundles this CLI on install).
+Desktop companion: [BlaziumHub](https://blazium.app/dev-tools/download?tool=hub), installed at `{autopf}\Blazium\Engine`. This CLI and the other shared tools live in `{autopf}\Blazium`. Store uploads stay in chauffeur.
 
 **License:** [MIT](LICENSE) — Copyright Blazium Games
 
@@ -29,7 +29,7 @@ Repository: [github.com/blazium-games/blazium-cli](https://github.com/blazium-ga
 |---------|------|---------|
 | [Engine](https://github.com/blazium-games/blazium) | The editor. Two lines: `blazium-dev` (Godot 4.3+) and `blazium_4.8` (Godot 4.8+). Hub, crash reporter, skills, and subagents track `blazium_4.8`. | [blazium.app/download](https://blazium.app/download) |
 | [CLI](https://github.com/blazium-games/blazium-cli) | Install editors, projects, remote control, Steam and itch.io deploy. Not the Games uploader. | Linux and Windows, x86_64 and x86_32. Catalog: [cli.json](https://cdn.blazium.app/cli/cli.json) |
-| [Hub](https://github.com/blazium-games/blazium-hub) | Desktop companion; installers bundle the CLI. Engine builds track `blazium_4.8`. | Linux and Windows, x86_64 and x86_32. |
+| [BlaziumHub](https://github.com/blazium-games/blazium-hub) | Desktop program at `{autopf}\Blazium\Engine`. Installers bundle this CLI in `{autopf}\Blazium`. Engine builds track `blazium_4.8`. | Linux and Windows, x86_64 and x86_32. |
 | [Crash reporter](https://github.com/blazium-games/blazium_crash_reporter) | Sidecar UI for engine and Hub crash reports. Engine builds track `blazium_4.8`. | Linux and Windows, x86_64 and x86_32. Catalog: [crash_reporter.json](https://cdn.blazium.app/crash_reporter/crash_reporter.json) |
 | [Toolchain](https://github.com/blazium-games/blazium-toolchain) | PS1, PS2, N64, and Interactive DVD. `ps3` and `ps4` are reserved and do not ship. | Linux and Windows, x86_64 and x86_32. Catalog: [toolchain.json](https://cdn.blazium.app/toolchain/toolchain.json) |
 | [Skills](https://github.com/blazium-games/blazium-skills) | Agent skill packs for Claude, Cursor, Codex, and Grok. Own semver, separate from the 0.8.x API baseline. | Catalog: [skills.json](https://cdn.blazium.app/skills/skills.json) |
