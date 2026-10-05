@@ -248,6 +248,12 @@ func HandleURI(opts HandleURIOptions) (map[string]any, error) {
 
 	case "open", "load":
 		return handleURIProject(opts, parsed)
+	case "launcher":
+		out, err := OpenLauncherURI(parsed.Raw, 60*time.Second)
+		if err != nil {
+			return nil, err
+		}
+		return out, nil
 	default:
 		return nil, fmt.Errorf("unsupported action %q", parsed.Action)
 	}

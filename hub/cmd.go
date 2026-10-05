@@ -769,6 +769,54 @@ With --path: ensures only that file (installer/machine use).`,
 	hubRemoteEnsure.Flags().StringVar(&hubRemotePath, "path", "", "Explicit hub_remote.json path")
 	hubRemoteCmd.AddCommand(hubRemoteEnsure)
 
+	launcherRemotePath := ""
+	launcherRemoteExe := ""
+	launcherRemoteCmd := &cobra.Command{
+		Use:   "launcher-remote",
+		Short: "Manage the games launcher remote_control secret (launcher_remote.json)",
+	}
+	launcherRemoteEnsure := &cobra.Command{
+		Use:   "ensure",
+		Short: "Load or create launcher_remote.json (never rotates a valid token)",
+		Long: `Ensures an authenticated games-launcher remote_control secret exists.
+
+Without --path: uses user config, then machine config; creates the user file if both missing.
+With --path: ensures only that file. --exe records the launcher executable without rotating the token.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			path := strings.TrimSpace(launcherRemotePath)
+			exe := strings.TrimSpace(launcherRemoteExe)
+			var (
+				f   LauncherRemoteFile
+				err error
+			)
+			if path == "" {
+				f, err = EnsureLauncherRemoteSecret(exe)
+			} else {
+				f, err = EnsureLauncherRemoteSecretAt(path, exe)
+			}
+			if err != nil {
+				return err
+			}
+			outPath := path
+			if outPath == "" {
+				outPath, _ = LauncherRemoteConfigPath()
+			}
+			return output.Write(format(), map[string]any{
+				"ok":         true,
+				"action":     "launcher-remote-ensure",
+				"path":       outPath,
+				"host":       f.Host,
+				"port":       f.Port,
+				"executable": f.Executable,
+				"token":      f.Token,
+			})
+		},
+	}
+	launcherRemoteEnsure.Flags().StringVar(&launcherRemotePath, "path", "", "Explicit launcher_remote.json path")
+	launcherRemoteEnsure.Flags().StringVar(&launcherRemoteExe, "exe", "", "Launcher executable path to store")
+	launcherRemoteCmd.AddCommand(launcherRemoteEnsure)
+
 	addTemplatesCommands(root, opts, format)
-	root.AddCommand(installCmd, uninstallCmd, installPathCmd, editorsCmd, projectsCmd, openCmd, loadCmd, runCmd, projectManagerCmd, handleURICmd, hubRemoteCmd)
+	root.AddCommand(installCmd, uninstallCmd, installPathCmd, editorsCmd, projectsCmd, openCmd, loadCmd, runCmd, projectManagerCmd, handleURICmd, hubRemoteCmd, launcherRemoteCmd)
 }

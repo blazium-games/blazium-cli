@@ -4,7 +4,14 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
+	"regexp"
 	"strings"
+)
+
+var (
+	assetUIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+	usernamePattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{2,30}[a-z0-9])$`)
+	redeemPattern   = regexp.MustCompile(`^[A-Za-z0-9-]{1,80}$`)
 )
 
 // ParsedURI is the result of parsing a blazium:// deep link.
@@ -64,13 +71,24 @@ func ParseBlaziumURI(raw string) (ParsedURI, error) {
 		out.Action = "open"
 		out.Path = path
 	case host == "install":
-		out.Action = "install"
 		q := u.Query()
 		out.Version = q.Get("version")
 		out.Channel = q.Get("channel")
 		out.Platform = q.Get("platform")
 		out.Arch = q.Get("arch")
 		out.Mono = parseMonoQuery(q.Get("mono"))
+		if path != "" && out.Version == "" {
+			if err := validateAssetUID(path); err != nil {
+				return ParsedURI{}, err
+			}
+			if out.Channel != "" && out.Channel != "stable" && out.Channel != "beta" {
+				return ParsedURI{}, fmt.Errorf("install channel must be stable or beta")
+			}
+			out.Action = "launcher"
+			out.Path = path
+			break
+		}
+		out.Action = "install"
 		if out.Version == "" {
 			return ParsedURI{}, fmt.Errorf("install uri requires version query parameter")
 		}
@@ -86,10 +104,84 @@ func ParseBlaziumURI(raw string) (ParsedURI, error) {
 		if out.Path == "" {
 			return ParsedURI{}, fmt.Errorf("register uri requires path query parameter")
 		}
+	case isLauncherHost(host):
+		if err := fillLauncherURI(&out, host, path, u.Query()); err != nil {
+			return ParsedURI{}, err
+		}
 	default:
 		return ParsedURI{}, fmt.Errorf("unknown blazium uri host %q", host)
 	}
 	return out, nil
+}
+
+func isLauncherHost(host string) bool {
+	switch host {
+	case "launcher", "game", "buy", "play", "listing", "search", "library", "wallet", "friends", "chat", "redeem", "review", "bug", "profile", "user":
+		return true
+	default:
+		return false
+	}
+}
+
+func fillLauncherURI(out *ParsedURI, host, path string, q url.Values) error {
+	out.Action = "launcher"
+	switch host {
+	case "launcher", "library", "wallet", "friends", "profile":
+		if path != "" {
+			return fmt.Errorf("%s uri does not take a path", host)
+		}
+	case "game", "buy", "play", "listing", "review", "bug":
+		if err := validateAssetUID(path); err != nil {
+			return err
+		}
+		out.Path = path
+	case "search":
+		query := q.Get("q")
+		if strings.ContainsAny(query, "\r\n") || len(query) > 200 {
+			return fmt.Errorf("search query is invalid")
+		}
+		out.Path = query
+	case "redeem":
+		code := q.Get("code")
+		if code != "" && !redeemPattern.MatchString(code) {
+			return fmt.Errorf("redeem code is invalid")
+		}
+		out.Path = code
+	case "user":
+		name := strings.ToLower(path)
+		if !usernamePattern.MatchString(name) {
+			return fmt.Errorf("user uri requires a username")
+		}
+		out.Path = name
+	case "chat":
+		parts := strings.Split(path, "/")
+		if len(parts) != 2 {
+			return fmt.Errorf("chat uri requires friend/<username> or game/<uid>")
+		}
+		switch parts[0] {
+		case "friend":
+			name := strings.ToLower(parts[1])
+			if !usernamePattern.MatchString(name) {
+				return fmt.Errorf("chat friend requires a username")
+			}
+			out.Path = name
+		case "game":
+			if err := validateAssetUID(parts[1]); err != nil {
+				return err
+			}
+			out.Path = parts[1]
+		default:
+			return fmt.Errorf("chat uri requires friend/<username> or game/<uid>")
+		}
+	}
+	return nil
+}
+
+func validateAssetUID(uid string) error {
+	if !assetUIDPattern.MatchString(uid) {
+		return fmt.Errorf("invalid asset uid")
+	}
+	return nil
 }
 
 func parseMonoQuery(v string) bool {
