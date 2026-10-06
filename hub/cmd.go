@@ -818,5 +818,6 @@ With --path: ensures only that file. --exe records the launcher executable witho
 	launcherRemoteCmd.AddCommand(launcherRemoteEnsure)
 
 	addTemplatesCommands(root, opts, format)
+	addStartersCommands(root, format)
 	root.AddCommand(installCmd, uninstallCmd, installPathCmd, editorsCmd, projectsCmd, openCmd, loadCmd, runCmd, projectManagerCmd, handleURICmd, hubRemoteCmd, launcherRemoteCmd)
 }
